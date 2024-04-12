@@ -1,0 +1,1032 @@
+//------------------------------------------------
+//--- 010 Editor v9.0 Binary Template
+//
+//   File:      RE_Engine_MESH.bt
+//   Authors:   alphaZomega, Che, Darkness
+//   Version:   1.32
+//   Purpose:   Editing of RE Engine MESH models
+//   Category:  RE Engine
+//   File Mask: *.mesh.*
+//   ID Bytes:  4D 45 53 48 // MESH  
+//   History:   March 22, 2024
+//------------------------------------------------
+LittleEndian();
+SetBackColor(cBlack);
+
+local int i <hidden=true>, j <hidden=true>, k <hidden=true>, l <hidden=true>, z <hidden=true>, vrtNxt <hidden=true>, FVF <hidden=true>, t <hidden=true>, numVertsLOD <hidden=true>, distFromLocal <hidden=true>, vertBuffSz <hidden=true>, vertEnd <hidden=true>, vertStart <hidden=true>;
+local uint64 posV <format=hex, hidden=true>, posNT <format=hex, hidden=true>, posF <format=hex, hidden=true>, posMsh <format=hex, hidden=true>, posBack <hidden=true>;
+local uint version <hidden=false> = 2;
+local ubyte isRE7 <hidden=true> = FALSE;
+local ubyte isExo <hidden=true> = FALSE;
+local ubyte isSF6 <hidden=true> = FALSE;
+
+
+local uint bnHash <hidden=true> = 246067918; //put a bone hash here to test all bones in the file for it and find its name
+void testForBoneHash() {
+	for (l=0;l<Bones.numBones;l++)
+		if (hash_wide(Bones.Hierarchy.Hierarchy[l].name) == bnHash) {
+			Printf("Hash %u = %s\n", bnHash, Bones.Hierarchy.Hierarchy[l].name);
+            bnHash = 0;
+			break;
+		}
+}
+
+
+
+/* //For generating the murmur3 hashes that chain files use to find bone names:*/
+//Murmur3 hash generation by Darkness:
+uint32 fmix32(uint32 h){
+  h ^= h >> 16;
+  h *= 0x85ebca6b;
+  h ^= h >> 13;
+  h *= 0xc2b2ae35;
+  h ^= h >> 16;
+
+  return h;
+}
+
+uint32 mmh3 (byte key[], uint32 length , uint32 seed){
+    local uint64 block_start<hidden=true>;
+    local const uint nBlocks = length / 4;
+    local uint32 h1 = seed;
+    
+    local const uint32 c1 = 0xcc9e2d51;
+    local const uint32 c2 = 0x1b873593;
+
+    local uint32 k1;
+
+    local byte salam = 32;
+    for(block_start = 0; block_start < nBlocks * 4; block_start+= 4){
+        k1 = (uint32)key[block_start + 3] << 24 | \
+             (uint32)key[block_start + 2] << 16 | \
+             (uint32)key[block_start + 1] << 8 | \
+             (uint32)key[block_start + 0];
+
+        k1 = (c1 * k1) & 0xFFFFFFFF;
+        k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
+        k1 = (c2 * k1) & 0xFFFFFFFF;
+
+        h1 ^= k1;
+        h1 = (h1 << 13 | h1 >> 19) & 0xFFFFFFFF;
+        h1 = (h1 * 5 + 0xe6546b64) & 0xFFFFFFFF;
+    }
+
+    local uint32 tail_index = nBlocks * 4;
+    k1 = 0;
+    local uint32 tail_size = length & 3;
+
+    if(tail_size >= 3)
+        k1 ^= (uint32)key[tail_index + 2] << 16;
+    if(tail_size >= 2)
+        k1 ^= (uint32)key[tail_index + 1] << 8;
+    if(tail_size >= 1)
+        k1 ^= (uint32)key[tail_index + 0];
+
+    if(tail_size > 0){
+        k1 = (k1 * c1) & 0xFFFFFFFF;
+        k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
+        k1 = (k1 * c2) & 0xFFFFFFFF;
+        h1 ^= k1;
+    }
+
+    return fmix32(h1 ^ length);
+}
+
+uint32 hashASC(string key){
+    local uint64 it<hidden=true>;
+    local const uint length = Strlen(key);
+    local byte key_array[length];
+    for(it = 0; it < length; it++){
+        key_array[it] = key[it];
+    }
+
+    return mmh3(key_array, length, 0xFFFFFFFF);
+}
+
+uint32 hash_wide(string key){
+    local uint64 it<hidden=true>;
+    local const uint length = Strlen(key) * 2;
+    local byte key_array[length];
+    for(it = 0; it < length; it += 2){
+        key_array[it] = key[it / 2];
+        key_array[it + 1] = 0;
+    }
+    return mmh3(key_array, length, 0xFFFFFFFF);
+}
+
+uint32 hashWs(wstring key){
+    return hash_wide((string)key);
+}
+
+uint32 hashASCWs(wstring key){
+    return hashASC((string)key);
+}
+
+typedef uint32 fc_t <read=fcRead, write=fcWrite>;
+    string fcRead( fc_t f ) {
+        string s;
+        SPrintf( s, "%u", f/3 );
+        return s;
+    }
+    void fcWrite( fc_t &f, string s ) {
+        local uint32 ff = Atoi(s);
+        f = (fc_t)(ff * 3);
+    }
+
+typedef byte nrml_t <read=nrmlRead, write=nrmlWrite>;
+    string nrmlRead( nrml_t f ) {
+        string s;
+        SPrintf( s, "%f", f/127.0f );
+        return s;
+    }
+    void nrmlWrite( nrml_t &f, string s ) {
+        local float ff = Atof(s);
+        f = (nrml_t )( (byte)(ff * 127.0f + 0.5) );
+    }
+
+typedef hfloat vtex_t <read=vRead, write=vWrite>;
+    string vRead( vtex_t f ) {
+        string s;
+        SPrintf( s, "%f", 1.0f - f );
+        return s;
+    }
+    void vWrite( vtex_t &f, string s ) {
+        local float ff = Atof(s);
+        f = (vtex_t )(1.0f - ff);
+    }
+
+typedef ubyte weight_t <read=wRead, write=wWrite>;
+    string wRead( weight_t f ) {
+        string s;
+        SPrintf( s, "%f", f/255.0f );
+        return s;
+    }
+    void wWrite( weight_t &f, string s ) {
+        local float ff = Atof(s);
+        f = (weight_t)( (f * 255.0f) + 0.5f );
+    }
+
+typedef byte BLANK <name=readBLANK,read=readBLANK, write=null>;
+	string readBLANK(BLANK &ref) { return " ";}
+
+struct{
+    char   ID[4];
+    uint32 version;
+    if (version == 352921600) 
+        isRE7 = TRUE;
+    if (version == 22011900)
+        isExo = TRUE;
+    
+    uint fileSize;
+    if (version == 220705151 || version == 220822879 || version == 22011900 || version == 230406984 || version == 230517984) {
+        isSF6 = TRUE;
+        uint ukn;                   //probably padding
+        ubyte Flag;                 //??
+	    ubyte SolvedOffset;         //??
+        ushort ukn;                 //??
+        uint numNodes;
+        uint64 ukn1;                //maybe padding
+        uint64 LODOffs;
+	    uint64 ShadowLODOffs;
+        uint64 OccluderMeshOffs;
+        uint64 bsHeaderOffs;
+        uint64 ukn2;                //?? maybe something new
+        uint64 vert_buffOffs;
+        uint64 normalsRecalcOffs;   //?? unsure
+        uint64 groupPivotOffs;      
+        uint64 BBHeaderOffs;
+        uint64 bonesOffs;
+        uint64 matIndicesOffs;
+        uint64 boneIndicesOffs;
+        uint64 bsIndicesOffs;
+        if (version == 230406984 || version == 230517984) {
+             uint64 namesOffs;          //(Apollo Justice rigged meshes only)
+             uint64 uknDD2;
+             uint64 ukn3;
+        } else {
+            uint64 ukn3;                //?? 16 bytes before vertex element headers
+            uint64 namesOffs;
+        }
+        uint64 verticesOffset;
+    } else {
+        if (!isRE7)
+	        uint LODGroupHash;
+        ubyte Flag;
+	    ubyte SolvedOffset;
+        ushort numNodes; 
+        if (!isRE7)
+            FSkip(4);
+        uint64 LODOffs <format=hex>;
+	    uint64 ShadowLODOffs <format=hex>;
+        uint64 OccluderMeshOffs;
+        uint64 bonesOffs <format=hex>;
+        if (!isRE7) 
+            uint64 normalsRecalcOffs <format=hex>;
+        uint64 bsHeaderOffs <format=hex>;
+        uint64 BBHeaderOffs <format=hex>;
+        uint64 vert_buffOffs <format=hex>; //FSkip(8);
+        uint64 groupPivotOffs <format=hex>;
+        if (isExo)
+            uint64 ukn;
+        uint64 matIndicesOffs <format=hex>;
+        uint64 boneIndicesOffs <format=hex>;
+        uint64 bsIndicesOffs <format=hex>;
+        if (isExo)
+            uint64 ukn;
+        uint64 namesOffs <format=hex>;
+    }
+} Header;
+
+if (!isSF6 && (Header.version == 386270720 || Header.version == 1902042334 || Header.version == 1808282334 || Header.version == 32))
+    version = 1;
+//if (Header.version == 2020091500 || Header.version == 2007158797 || Header.version == 21041600)
+//	version = 2;
+
+Header.bonesOffs != 0 ? FSeek(Header.bonesOffs) : FSeek(Header.namesOffs);
+//if (false)
+struct {
+    if (Header.bonesOffs != 0) {
+        FSeek(Header.bonesOffs);
+        uint32 numBones;
+        uint32 boneMapCount;    
+        FSkip(8);
+        uint64 hierarchyOffs <format=hex>;  
+        uint64 localTrnsMtxOffs <format=hex>; 
+        uint64 globalTrnsMtxOffs <format=hex>; 
+        uint64 inverseGlobalTrnsMtxOffs <format=hex>;
+    }
+
+    local int matCount <hidden=true> = ReadUByte(Header.LODOffs[0] + 1); 
+
+    FSeek(Header.namesOffs);
+    typedef struct {
+        string Name <open=suppress>;
+        Name;
+    } NAMES <read=ReadNAMES, write=WriteNAMES>;
+
+    struct {
+        uint64 namesOffs[Header.numNodes];
+        for (t = 0; t < Header.numNodes; t++) {
+            FSeek(namesOffs[t]);
+            NAMES Name;
+        }
+    } Names <hidden=true>; 
+
+    if (isRE7) {
+        FSeek(Header.BBHeaderOffs);
+        uint isRE7boneMapCount;
+    }
+
+    if (Header.bonesOffs != 0) {
+        FSeek(Header.bonesOffs + 48);
+        if (isRE7)
+            FSeek(ReadUInt64(Header.LODOffs[0]+72)+16);
+        
+        struct {
+            local int skinCount <hidden=true> = boneMapCount;
+            if (isRE7)
+                skinCount = isRE7boneMapCount;
+            
+            for (t = 0; t < skinCount; t++) {
+        		struct SKINBONEMAP {
+            		uint16 Index;
+            		local string name <hidden=true>;
+                    local uint16 boneIdx = Index-1 + (matCount);
+                    name = Names.Name[Index + (matCount)].Name; 
+        		} Bone <open=suppress, name=ReadSKINBONEMAPNAME, read=ReadSKINBONEMAP, write=WriteSKINBONEMAP>;
+            }
+        } Skin_Bone_Map;         
+    	
+        FSeek(hierarchyOffs);  
+        struct {    
+            for (t = 0; t < numBones; t++) {
+        		struct HIERARCHY {
+            		local string name <hidden=true>;
+            		name = Names.Name[t + matCount].Name;
+            		short index; 
+            		short parent; 
+            		short nextSibling;
+            		short nextChild;
+            		short Cousin;
+            		FSkip(6); 
+        		} Hierarchy <read=ReadHIERARCHY>; 
+            }
+        } Hierarchy;
+        FSeek(localTrnsMtxOffs);
+
+        typedef struct {
+           local string name <hidden=true> = Names.Name[t + matCount].Name; 
+           float x1, y1, z1, w1_______;
+           float x2, y2, z2, w2_______; 
+           float x3, y3, z3, w3_______;
+           float X_Coord, Y_Coord, Z_Coord, w4_______;
+        }  TRANSFORMBONES <name=ReadTRANSFORMBONES>;  
+
+        struct { 
+            distFromLocal = 0;   
+            for (t = 0; t < numBones; t++) {
+                TRANSFORMBONES Local;
+                distFromLocal++;
+            }
+        } Local_Bone_Transforms;
+ 
+        FSeek(globalTrnsMtxOffs);
+        struct {    
+            for (t = 0; t < numBones; t++) {
+                TRANSFORMBONES Global;   
+                distFromLocal++;
+            }
+        } Global_Bone_Transforms;  
+    
+        FSeek(inverseGlobalTrnsMtxOffs);
+        struct {    
+            for (t = 0; t < numBones; t++) {
+                TRANSFORMBONES InverseGlobal; 
+                distFromLocal++; 
+            }
+        } InverseGlobal_Bone_Transforms;  
+    }
+
+    if (Header.groupPivotOffs) {
+        FSeek(Header.groupPivotOffs);
+        struct {
+            uint bufferSize;
+            uint reserved<hidden=true>;
+            uint64 startOffs;
+            FSeek(startOffs);
+            struct {
+                float x,y,z;
+            } vec3[(uint)(bufferSize / 4 / 3)];
+        } GroupPivots;
+    }
+
+    if (Header.bsHeaderOffs !=0) {
+        FSeek(Header.bsHeaderOffs);
+         struct {
+			local uint blendShapeCount, blendShapeSize, blendShapeIndices;
+            ubyte numShapeGroups;
+			ubyte b;
+			ubyte c;
+			ubyte d; 
+			uint  e;
+			uint64 bsGroupOffsetsOffset;
+			if (version == 1) {
+				uint64 BSGrpFloatsOffs;
+				FSeek(bsGroupOffsetsOffset);
+				FSkip(4); 
+				uint vertexCount;
+				ushort ukn, blendShapeNum;
+				FSkip(4);
+				uint ukn, ukn, ukn;
+				FSeek(BSGrpFloatsOffs);
+				float BBox[8];
+				float BBox2[8];
+    			blendShapeCount = blendShapeNum;
+    			blendShapeSize = vertexCount*(blendShapeNum+1)*4;
+				if (c > 0)
+					blendShapeSize *= 2;
+    			blendShapeIndices = vertexCount*(blendShapeNum+1);
+			} else if (isSF6) {
+				FSeek(bsGroupOffsetsOffset);
+				uint64 bsGroupHdrOffsets[numShapeGroups];
+            } else {
+				FSeek(bsGroupOffsetsOffset);
+				uint64 bsGroupHdrOffsets[numShapeGroups];
+				FSeek(bsGroupHdrOffsets[0]); 
+            
+				for (i=0; i<numShapeGroups; i++) {
+					FSeek(bsGroupHdrOffsets[i]); 
+					struct {
+                        
+						ushort A, B, C, D;
+						uint64 Padding;
+                        uint64 ShapeParamsOffs, BBoxOffs;
+						FSeek(ShapeParamsOffs);
+            			uint32 vertexOffset, vertexCount;
+						ushort F, blendShapeNum;
+						float G;
+						FSeek(BBoxOffs);
+            			float BBox[8];
+    					blendShapeCount += blendShapeNum;
+    					blendShapeSize += vertexCount*blendShapeNum*4;
+    					blendShapeIndices += vertexCount*blendShapeNum;
+
+					} BlendShapesGroupHdr;
+				}
+				if (ReadUInt64() != 0 && ReadUInt64() < 1024) {
+					uint64 BSGrpFloatsSize, BSGrpFloatsOffs;
+					//FSeek(BSGrpFloatsOffs);
+					float BSGrpFloats[(uint)(BSGrpFloatsSize / 4)];
+				}
+			}
+        } BlendShapes_Header; 
+    }
+
+    typedef struct {
+        local string name <hidden=true>; 
+        ushort Index;
+        name = Names.Name[Index].Name;
+    } INDICES <read=ReadINDICES, write=WriteINDICES, open=false>;
+
+	FSeek(Header.matIndicesOffs);
+    struct {
+        if (Header.bonesOffs != 0) {
+            for (t = 0; t < (matCount); t++) {
+                INDICES Material_Indices; } }
+        else { 
+            for (t = 0; t < (Header.numNodes); t++) {
+                INDICES Material_Indices; } }
+    } Material_Indices;
+
+    if (Header.bonesOffs != 0) {
+        FSeek(Header.boneIndicesOffs);
+        struct {
+            for (t = 0; t < numBones; t++) {
+                INDICES Bone_Indices;
+            }
+        } Bone_Indices;
+    }
+
+    if (Header.bsIndicesOffs != 0) {
+        FSeek(Header.bsIndicesOffs);
+        struct {
+            for (t = 0; t < Header.numNodes - numBones - matCount; t++) {
+                INDICES Blendshape_Indices;
+            }
+        } Blendshape_Indices;
+    }
+
+    FSeek(Header.namesOffs);
+    struct {
+        uint64 namesOffs[Header.numNodes] <read=readNamesOffs, format=hex>;
+        for (t = 0; t < Header.numNodes; t++) {
+            FSeek(namesOffs[t]);
+            NAMES Name;
+        }
+    } Names2 <name="Names">;
+
+    if (exists(Header.uknDD2)) {
+        FSeek(Header.uknDD2);
+        uint DD2Hashes[ReadUByte(ReadUInt64(ReadUInt64(Header.LODOffs + 56)))];
+    }
+ 
+    if (Header.BBHeaderOffs != 0) {
+        FSeek(Header.BBHeaderOffs);
+        struct {   
+            uint64 numBB;
+            uint64 BBsOffs <format=hex>; 
+            FSeek(BBsOffs);
+            for (t = 0; t < numBB; t++) { 
+				struct BOUNDINGBOX {
+                	local string name <hidden=true>;
+                	if (numBB > boneMapCount)
+                    	name = Bone_Indices.Bone_Indices[t].name;
+                	else 
+                    	name = Skin_Bone_Map.Bone[t].name; 
+                	float x1, y1, z1, w1,
+                          x2, y2, z2, w2;
+            	} BoundingBoxes <read=ReadBOUNDINGBOX>;
+			}
+        } BoundingBoxes;  
+    }
+	if (exists(numBones) && bnHash)
+		testForBoneHash();
+} Bones <fgcolor=cGreen, name="Bones & Stuff">;
+
+string readNamesOffs(uint64 &n) {
+    local string s;
+    SPrintf(s, "%u -- %s", n, ReadString(n));
+    return s;
+}
+
+
+FSeek(Header.vert_buffOffs + 0);
+struct{
+    if (!isRE7) {
+        uint64 vertElemHdrsOffs <format=hex>;
+        uint64 vertBuffOffs <format=hex>; 
+        if (isSF6 || isExo) {
+            uint64 ukn;
+            uint32 vertexBufferSize;
+            uint32 face_buffOffsSF6;
+            local uint face_buffOffs = face_buffOffsSF6 + vertBuffOffs;
+        } else {
+            uint64 face_buffOffs <format=hex>;
+            if (version == 2 && ReadUInt64(FTell())==0) {
+                uint32 ukn00;
+                uint32 ukn01;
+            }
+            uint32 vertexBufferSize;
+            uint32 faceVertBuffHdrize;
+        }
+        uint16 vertElemCount;
+        uint16 vertElemCount;
+        uint32 ukn, ukn;
+        int32  blendshapesOffset;
+	    
+        FSeek(vertElemHdrsOffs);
+        struct {
+            uint16 type;
+            uint16 size;
+            uint32 offs <format=hex>;
+        } vertElemHeader[vertElemCount[1]];
+        posV = vertBuffOffs;
+    } else {
+        uint32 vertexBufferSize; FSkip(12);
+        uint32 faceVertBuffHdrize; FSkip(20);
+        uint64 face_buffOffs <format=hex>;
+        posV = FTell();
+    }
+    
+    posF = face_buffOffs;
+} VertBuffHdr;
+
+if (Header.OccluderMeshOffs) {
+    FSeek(Header.OccluderMeshOffs);
+    struct {
+        uint occluderMeshCount;
+        float ukn;
+        uint64 occluderMeshesOffset;
+        FSeek(occluderMeshesOffset);
+        struct {
+            uint64 occluderDataOffs;
+            FSeek(occluderDataOffs);
+            ubyte uknBytes[8];
+            uint vertexCount;
+            uint indexCount;
+            uint ukn1;
+            uint indexCount2;
+        } occluderMesh[occluderMeshCount] <optimize=false>;
+        for (z = 0; z < occluderMeshCount; z++) {
+            FSeek(VertBuffHdr.vertBuffOffs);
+            struct {
+                for (k = 0; k < occluderMesh[z].vertexCount; k++) {
+                    struct {
+                        float x,y,z;
+                    } vert;
+                }
+            } verts;
+
+        }
+        for (z = 0; z < occluderMeshCount; z++) {
+            FSeek(VertBuffHdr.face_buffOffs);
+            struct {
+                for (k = 0; k < occluderMesh[z].indexCount / 3; k++) {
+                    struct {
+                        ushort A,B,C;
+                    } face;
+                }
+            } faces;
+        }
+
+    } OccluderMeshes;
+
+}
+
+for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliable)
+    if (Header.LODOffs[z] > 0) {
+        FSeek(Header.LODOffs[z]);
+        struct {
+            ubyte  numLODs;
+            local ubyte Unique_LODGroups <hidden=false>;
+            ubyte  matCount;
+            ubyte  numUVs;
+            numUVs == 2 ? FVF = 44 : FVF = 40;
+            ubyte  skinWeightCount;
+            uint32 numMsh_total; 
+            if (z == 0) {
+                if (version == 1)
+                    uint64 ukn64;
+                if (version == 0)
+                    uint64 ukn64;
+                float boundingSphere[4];
+                float boundingBox[8];
+                
+        	}
+			//if (version == 1) {
+            	uint64 LODOffsOffset;//FSeek( ReadUInt64() );
+                FSeek(LODOffsOffset);
+            //}
+            struct {
+                Unique_LODGroups = 0;
+                for (i = 0; i < numLODs; i++) {
+                    uint64 LODOffs;
+					Unique_LODGroups++;
+                    while (LODOffs == ReadUInt64(FTell())) {    //RE2 Models with 8 LODGroups re-use some of the same offsets
+                        FSkip(8);
+						i++;
+                    } 
+                }
+            } LOD_Offsets;
+
+            Unique_LODGroups = 1;
+
+            local uint thisNumVerts;
+
+            for (i = 0; i < Unique_LODGroups; i++) {
+                struct {            
+                    FSeek(LOD_Offsets.LODOffs[i]);
+                    ubyte  numMainMesh;  
+                    ubyte vertexFormat;
+                    FSkip(2);
+                    float  lodFactor;
+                    uint64 mainMeshHdrOffs <format=hex>;   
+            
+                    FSeek(mainMeshHdrOffs);
+                    uint64 mainMeshOffs[numMainMesh] <format=hex>;
+                    
+                    BitfieldDisablePadding();
+
+                    for (j = 0; j < numMainMesh; j++) {
+                        FSeek(mainMeshOffs[j]);
+                        struct MAINMESH {
+                            ubyte  Group_ID; 
+                            ubyte  numMsh; 
+                            FSkip(6);
+                            uint32 numVerts;
+                            fc_t numFaces; 
+                            
+                            posBack = FTell();
+                            for (k = 0; k < numMsh; k++){
+                                struct {
+                                    ushort matID;
+                                    FSkip(2);
+						            fc_t numMFaces;
+                                    fc_t fcsBefore; 
+                                    uint32 vrtBefore;
+									if (version == 2) {
+										FSkip(8);
+                                    }
+                                } foreseenSubMsh<hidden=true>;
+                            }
+                            FSeek(posBack);
+        
+                            for (k = 0; k < numMsh; k++){
+                                struct SUBMESH {
+                                    
+                                    ushort Material_ID; 
+                                    ushort ukn;
+                                    local string Material_Name <hidden=true> = Bones.Material_Indices.Material_Indices[Material_ID].name;
+						            fc_t numMFaces;
+                                    local uint numIndices = numMFaces;
+                                    fc_t fcsBefore; 
+                                    uint32 vrtBefore;
+                                    local int numVerts <hidden=false>;
+									if (version == 2) {
+										int uknInt;
+                                        int uknInt;
+                                    }
+                                    if(k + 1 < numMsh){
+                                        numVerts = foreseenSubMsh[k+1].vrtBefore - foreseenSubMsh[k].vrtBefore;
+                                    } else {
+                                        numVerts = LODGroup[i].MainMesh[j].numVerts - (foreseenSubMsh[k].vrtBefore - numVertsLOD);
+                                    }
+                                    thisNumVerts = numVerts;
+                                    posMsh = FTell();
+                                    if (!isRE7) {
+                                        for (l = 0; l < VertBuffHdr.vertElemCount[0]; l++) {
+                                            FSeek(VertBuffHdr.vertBuffOffs+VertBuffHdr.vertElemHeader[l].offs + VertBuffHdr.vertElemHeader[l].size*vrtBefore);
+
+                                            if (vertStart==0) vertStart = FTell();
+
+                                            switch (VertBuffHdr.vertElemHeader[l].type) {
+                                        	    case 0:
+                                                    if ((FTell() + 12*numVerts) > VertBuffHdr.vertBuffOffs+VertBuffHdr.vertElemHeader[l+1].offs)
+                                                        numVerts = ((VertBuffHdr.vertBuffOffs+VertBuffHdr.vertElemHeader[l+1].offs) - FTell()) / 12;
+                                            	    struct {
+                                                	    float X, Y, Z;
+                                            	    } Positions[numVerts] <open=suppress, fgcolor=cLtRed>;
+                                            	    break;
+        	    
+                                        	    case 1:
+                                            	    struct {
+                                                	    nrml_t nX, nY, nZ;
+                                                	    byte nW;
+                                                	    nrml_t tX, tY, tZ;
+                                                	    byte tW;
+                                            	    } Normals_and_Tangents[numVerts] <open=suppress, fgcolor=cLtBlue>;
+                                            	    break;
+        	    
+                                        	    case 2:
+                                            	    struct {
+                                                	    vtex_t U;
+                                                	    vtex_t V;
+                                            	    } UV0[numVerts] <open=suppress, fgcolor=cLtGreen>;
+                                            	    break;
+        	    
+                                        	    case 3:
+                                            	    struct {
+                                                	    vtex_t U;
+                                                	    vtex_t V;
+                                            	    } UV1[numVerts] <open=suppress, fgcolor=cLtPurple>; 
+                                            	    break;
+        	    
+                                        	    case 4:
+                                            	    struct {
+                                                        if (isSF6 && Header.version != 220822879 && Header.version != 230517984)
+                                                            struct {
+                                                                ushort b : 10 <read=readBIDshort>;
+                                                                ushort b : 10 <read=readBIDshort>;
+                                                                ushort b : 10 <read=readBIDshort>;
+                                                                ubyte  p : 2 <hidden=true>;
+                                                                ushort b : 10 <read=readBIDshort>;
+                                                                ushort b : 10 <read=readBIDshort>;
+                                                                ushort b : 10 <read=readBIDshort>;
+                                                                ubyte  p : 2 <hidden=true>;
+                                                            } b;
+                                                        else
+                                                            ubyte    b[8] <open=true, read=readBID>;
+                                                	    weight_t w[8] <open=false>;
+                                                        //local short sum = w[0] + w[1] + w[2] + w[3] + w[4] + w[5] + w[6] + w[7];
+                                            	    } Bone_Inds_Weights[numVerts] <open=suppress, fgcolor=cLtYellow, optimize=true>;
+												    break;
+                                        	    
+                                        	    case 5:
+                                            	    struct {
+                                                	    ubyte R,G,B,A;
+                                            	    } Vertex_Colors[numVerts] <open=suppress, fgcolor=cWhite>;
+												    break;
+                                            }
+                                        }
+									} else { //isRE7 only
+                                        FSeek(posV);
+                                        struct{
+                                            float X, Y, Z;
+                                            nrml_t nX;
+                                            nrml_t nY;    
+                                            nrml_t nZ;
+                                            ubyte nW;
+                                            nrml_t tX;
+                                            nrml_t tY;
+                                            nrml_t tZ;
+                                            byte tW;
+                                            vtex_t U0, V0;        
+							                if (numUVs > 1) 
+                                                { vtex_t U1, V1; } 
+                                            if (Header.bonesOffs != 0) {
+                                                ubyte bnInd[8];     
+                                                weight_t weight[8];
+                                            }    
+                                        } Verts[numVerts] <open=suppress, optimize=true>;
+                                        posV = FTell();
+                                    }
+                                    
+                                    vertEnd = FTell();
+
+                                    FSeek(posF);
+                                    if (FTell()+this.numIndices*2 > FileSize())
+                                        this.numIndices = (FileSize()-FTell())/2;
+                                    struct {
+                                        ushort Index, Index, Index;
+                                    } Faces[this.numIndices/3] <open=suppress, fgcolor=cLtGreen>;
+                                    
+                                    if (!isRE7 && numMFaces % 2 != 0) //faces padding
+                                        FSkip(2);
+                                    
+                                    posF = FTell();
+									FSeek(posMsh);
+									//if (version == 2)
+									//	FSkip(8);
+                                } SubMesh <read=ReadSUBMESH>;                                
+                            }
+                            numVertsLOD += LODGroup[i].MainMesh[j].numVerts;
+                        } MainMesh;
+                    }
+                } LODGroup;
+            }
+			
+            //vertBuffSz = vertEnd - vertStart;
+            //vertBuffSz = FileSize() - vertStart;
+			if (!isSF6 && !isRE7 && VertBuffHdr.blendshapesOffset > 0) {
+                l = 0;
+				posBack = FTell();
+				FSeek(VertBuffHdr.vertBuffOffs + VertBuffHdr.blendshapesOffset);
+				struct {
+					//local uint totalShapes = (Header.numNodes - Bones.numBones - matCount);
+					//local uint blendShapesSize = ((VertBuffHdr.face_buffOffs - (VertBuffHdr.vertBuffOffs + VertBuffHdr.blendshapesOffset)));
+					//local uint shapeSize = (blendShapesSize / totalShapes);
+					//local uint diffsPerShape = shapeSize / 4;
+               
+					if (version == 2) {
+						for (i=0; i<Bones.BlendShapes_Header.numShapeGroups; i++) {
+							struct {
+								//typedef uint 10bitValue { 
+                                //Header.numNodes - numBones - matCount
+								for (j=0; j<Bones.BlendShapes_Header.BlendShapesGroupHdr[i].blendShapeNum; j++) {
+									struct BLENDSHAPE {
+										local uint index <hidden=true> = l;
+                                        l++;
+										local uint shapeGrpIdx  <hidden=true> = i;
+										//if (true)
+											struct {
+                                                uint diff;
+                                                /*FSkip(-8);
+                                                //hfloat x, y, z;
+                                                /*nrml_t tx;
+                                                nrml_t ty;
+                                                nrml_t tz;
+                                                nrml_t tw;
+                                                nrml_t x;
+                                                nrml_t y;
+                                                nrml_t z;
+                                                nrml_t w;*/
+												/*ubyte x : 8; //<read=ReadValue>;
+												ubyte y : 8; //<read=ReadValue>;
+												ubyte z : 8; //<read=ReadValue>;	
+                                                ubyte w : 8; //<read=ReadValue>;
+                                                
+												local float X = x / 255.0f;
+												local float Y = y / 255.0f;
+												local float Z = z / 255.0f;
+                                                //local float W = w / 255.0f;
+												ubyte x2 : 8; //<read=ReadValue>;
+												ubyte y2 : 8; //<read=ReadValue>;
+												ubyte z2 : 8; //<read=ReadValue>;	
+                                                ubyte w2 : 8; //<read=ReadValue>;
+
+												local float X2 = x2 / 255.0f;
+												local float Y2 = y2 / 255.0f;
+												local float Z2 = z2 / 255.0f;
+                                                local float W2 = w2 / 255.0f;
+												//FSeek(startof(this)+8);//
+					                            //local uint pdX = diff & 0x3ff;
+					                            //local uint pdY = (diff >> 10) & 0x3ff;
+					                            //local uint pdZ = (diff >> 20) & 0x3ff;
+					                            //chunkPosDiffs.append(NoeVec3((((pdX - 511.00001) / 512.0) * targetPositionDiffScales[t][0] + targetPositionDiffOffsets[t][0], \
+					                            //((pdY - 511.00001) / 512.0) * targetPositionDiffScales[t][1] + targetPositionDiffOffsets[t][1], \
+					                            //((pdZ - 511.00001) / 512.0) * targetPositionDiffScales[t][2] + targetPositionDiffOffsets[t][2])))
+                                                //local float X = (pdX - 511.00001) / 512.0;
+                                                //local float Y = (pdY - 511.00001) / 512.0;
+                                                //local float Z = (pdZ - 511.00001) / 512.0;
+    											//local float X = ((((diff & 255)) ) / 255.0f);
+    											//local float Y = ((((diff >> 8) & 255) ) / 255.0f);
+    											//local float Z = ((((diff >> 16) & 255) ) / 255.0f);
+                                                //local float W = ((((diff >> 30) & 1023) ) / 1023.0f);
+                                                //local float X =  (float)((int)(diff >> 42) - 255 )* 0.001;   
+                                                //local float Y =  (float)((int)((diff >> 21) & 0x3ff) - 255)* 0.001;
+                                                //local float Z =  (float)((int)(diff & 0x3ff) - 255 )* 0.001;
+                                                //local float X = (((diff >> 00) & 2097151) / 2097151.0f);
+                                                //local float Y = (((diff >> 21) & 2097151) / 2097151.0f);
+                                                //local float Z = (((diff >> 42) & 2097151) / 2097151.0f);*/
+											} diff [Bones.BlendShapes_Header.BlendShapesGroupHdr[i].vertexCount] <optimize=false, fgcolor=cRed>;
+										//else
+										//	uint32 diff[Bones.BlendShapes_Header.BlendShapesGroupHdr[i].vertexCount] <fgcolor=cRed>;
+										
+									} BlendShape <open=suppress, read=ReadBLENDSHAPE>;
+								} 
+							} BlendShapeGroup;
+						}
+					} else {
+						//local uint numDiffs = (VertBuffHdr.face_buffOffs - FTell())/4;
+						//struct { uint32 diff[numDiffs]; } shapes; FSeek(startof(shapes));
+						for (j=0; j<Bones.BlendShapes_Header.blendShapeNum; j++) { //blendShapeCount
+							struct DMCBLENDSHAPE {
+								local uint index <hidden=true> = l;
+                                l++;
+                                /*struct DIFF {
+								    int diff;
+                                    local float X = ((((diff & 1023)) ) - 511.0) / 512.0;
+                                    local float Y = ((((diff >> 10) & 1023) ) - 511.0) / 512.0;
+                                    local float Z = ((((diff >> 20) & 1023) ) - 511.0) / 512.0;
+    							    //local float X = ((((diff & 1023)) )) * 0.001;
+    							    //local float Y = ((((diff >> 10) & 1023) )) * 0.001;
+    							    //local float Z = ((((diff >> 20) & 1023) )) * 0.001;
+                                } diff[Bones.BlendShapes_Header.vertexCount] <optimize=false, read=readDIFF>;*/
+								if (Bones.BlendShapes_Header.c > 0)
+									struct {
+										ushort diff, diff, diff, diff;
+									} diff[Bones.BlendShapes_Header.vertexCount];
+								else
+									uint diff[Bones.BlendShapes_Header.vertexCount];
+							} BlendShape <open=suppress, fgcolor=cRed, read=ReadDMCBLENDSHAPE>;// size=sizeDMCBLENDSHAPE>;
+						} 
+					}
+				} BlendShapes;
+				FSeek(posBack);
+			}
+        } LODs;
+    }
+}
+
+int sizeDMCBLENDSHAPE(DMCBLENDSHAPE &d) { return Bones.BlendShapes_Header.vertexCount * 4; }
+
+string readDIFF(struct DIFF &d) {
+    string s;
+    SPrintf(s, "[%g, %g, %g]", d.X, d.Y, d.Z);
+    return s;
+}
+
+if (!isRE7 && Header.normalsRecalcOffs) {
+	FSeek(Header.normalsRecalcOffs);
+	struct {
+        if (version==2)
+            FSkip(32);
+        uint64 topVertOffs, topFacesOffs;
+        FSeek(topVertOffs);
+        struct {
+        	for (i = 0; i < LODs[0].LODGroup[0].numMainMesh; i++) {
+				struct {
+					for (k = 0; k < LODs[0].LODGroup[0].MainMesh[i].numMsh; k++)
+						struct {
+							struct {
+								ushort Vert_Index;
+								ubyte valueA, valueB;
+                			} Vertex[LODs[0].LODGroup[0].MainMesh[i].SubMesh[k].numVerts] <optimize=false>;
+						} SubMesh;
+				} MainMesh;
+			}
+        } Vertices;
+		FSeek(topFacesOffs);
+		struct {
+        	for (i = 0; i < LODs[0].LODGroup[0].numMainMesh; i++) {
+				struct {
+					uint ukn;
+					for (k = 0; k < LODs[0].LODGroup[0].MainMesh[i].numMsh; k++) {
+						struct {
+							struct {
+								ushort Face_Index;
+								ubyte valueA, valueB;
+							} Face[LODs[0].LODGroup[0].MainMesh[i].SubMesh[k].numMFaces] <optimize=false>;
+						} SubMesh;
+					}
+				} MainMesh;
+			}
+
+		} Faces;
+	} Normals_Recalculation;
+}
+string ReadNAMES( NAMES &input ) {return input.Name;}
+
+void WriteNAMES ( NAMES &input, string s ) { input.Name = s; } 
+
+string ReadSKINBONEMAPNAME ( SKINBONEMAP &input ) {return input.name;}
+
+string ReadSKINBONEMAP ( SKINBONEMAP &input ) { string s; SPrintf(s, "%u", input.Index); return s;}
+
+void WriteSKINBONEMAP ( SKINBONEMAP &input, string s ) { input.Index = Atoi(s); }
+
+string ReadHIERARCHY( HIERARCHY &input ) {return input.name;}
+
+string ReadTRANSFORMBONES( TRANSFORMBONES &input ) {return input.name;}
+
+string ReadINDICES( INDICES &input ) {string s; SPrintf(s, "%u -- %s", input.Index, input.name); return s; }
+
+void WriteINDICES ( INDICES &input, string s ) { input.Index = Atoi(s); }
+
+string ReadBOUNDINGBOX( BOUNDINGBOX &input ) {return input.name;}
+
+string ReadSUBMESH( SUBMESH &input ) { return input.Material_Name; }
+
+string ReadBLENDSHAPE( BLENDSHAPE &input ) { return Bones.Blendshape_Indices.Blendshape_Indices[input.index].name; }
+
+string ReadDMCBLENDSHAPE( DMCBLENDSHAPE &input ) { return Bones.Blendshape_Indices.Blendshape_Indices[input.index].name; }
+
+string ReadValue( uint32 &input ) { string s; SPrintf(s, "%u",  (input - 511.00000000001) * 0.001); return s; }
+
+//local uint64 dd = 0x80;
+
+string readBIDshort (ushort &b) {
+    local string s; 
+    SPrintf(s, "%u", b);
+    if (exists(Bones.Skin_Bone_Map.Bone[b]))
+        return s + " -- " + Bones.Skin_Bone_Map.Bone[b].name;
+    return s;
+}
+
+
+string readBID (ubyte &b) {
+    local string s; 
+    SPrintf(s, "%u", b);
+    if (exists(Bones.Skin_Bone_Map.Bone[b]))
+        return s + " -- " + Bones.Skin_Bone_Map.Bone[b].name;
+    return s;
+}
+
+/*
+string readBID (boneID &bID) {
+    local string s;
+    SPrintf(s, "%u", bID.bID);
+    if (exists(Bones.Skin_Bone_Map.Bone[bID.bID])) {
+        if (parentof(bID).w[bID.Index] != 0)
+            return s + " -- " + Bones.Skin_Bone_Map.Bone[bID.bID].name;
+        else
+            return s + " -- " + Bones.Skin_Bone_Map.Bone[bID.bID].name + " (empty)";
+    }
+    return s;
+}
+
+                                            	struct {
+                                                	//ubyte    b[8] <open=true, read=readBID, name="Bone Index">;
+                                                    local int xx <hidden=true>;
+                                                    for (xx=0; xx<8; xx++) {
+                                                        struct boneID {
+                                                            local byte Index = xx;
+                                                            ubyte bID;
+                                                        } bID <read=readBID, name="Bone Index">;
+                                                    }
+                                                	ubyte w[8] <optimize=false, name="Weight">; //weight_t w[8] <name="Weight">;
+                                                    local short sum = w[0] + w[1] + w[2] + w[3] + w[4] + w[5] + w[6] + w[7];
+                                                    
+                                            	} Bone_Inds_Weights[numVerts] <fgcolor=cLtYellow>;
+												break;
+*/

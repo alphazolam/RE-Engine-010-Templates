@@ -1,0 +1,587 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_CLIP_TML.bt
+//   Authors: alphaZomega
+//   Version: 1.0
+//   Purpose: Parsing RE Engine CLIP and TML files
+//  Category: RE Engine
+// File Mask: *.clip.*;*.tml.*
+//  ID Bytes: 43 4C 49 50
+//   History: July 20 2021
+//------------------------------------------------
+local int hideNodes <hidden=true> = false;
+
+
+LittleEndian();
+local uint i <hidden=true>, j <hidden=true>, k <hidden=true>, version <hidden=true> = ReadUInt(4);
+local uint nodeSz <hidden=true> = 96;
+local uint keySz <hidden=true> = 40;
+local uint propSz <hidden=true> = 112;
+if (version == 18) {
+    nodeSz = 88;
+    propSz = 120;
+}
+if (version == 34) {
+    nodeSz = 88;
+    keySz = 32;
+}
+if (version >= 40) {
+    propSz = 72;
+    keySz = 32;
+}
+
+int detectedFloat(uint64 offset) {
+    if (offset+4 <= FileSize()) {
+        local float flt = ReadFloat(offset);
+        return (ReadUByte(offset+3) != 255 && flt != 0 && (Abs(flt) > 0.000001 && Abs(flt) < 10000000) );
+    } return false;
+}
+
+typedef struct {
+    uchar uuid[16];
+} rGUID <open=suppress, read=ReadrGUID>;
+
+    wstring ReadrGUID (rGUID &g) {
+        local char s[37];
+        SPrintf(s, 
+            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
+            g.uuid[0], g.uuid[1], g.uuid[2], g.uuid[3], g.uuid[4], g.uuid[5], g.uuid[6], g.uuid[7],
+            g.uuid[8], g.uuid[9], g.uuid[10], g.uuid[11], g.uuid[12], g.uuid[13], g.uuid[14], g.uuid[15]
+        );
+        return s;
+    }
+
+typedef struct PtrString(ubyte isWString) {
+    uint64 offset;
+    if (isWString) {
+        FSeek(header.c16Ptr + offset * 2);
+        if (ReadShort(FTell()-2) == 0)
+            wstring String;
+    } else {
+        FSeek(header.c8Ptr + offset);
+        if (ReadByte(FTell()-1) == 0)
+            string String;
+    }
+    if (!exists(this.String))
+        local string String;
+    FSeek(startof(offset)+8);
+};
+
+typedef PtrString StringRead <open=suppress, read=ReadStringRead, write=WriteStringRead>;
+
+    wstring ReadStringRead(StringRead &st) { return st.String; }
+    
+    void WriteStringRead(StringRead &st, string s) { st.String = s; }
+
+struct _String(ubyte isWString) {
+    if (isWString)
+        wstring String;
+    else 
+        string String;
+};
+
+typedef _String cString <open=suppress, read=ReadRString, write=WriteRString>;
+
+    wstring ReadRString(cString &st) { return st.String; }
+    
+    void WriteRString(cString &st, string s) { st.String = s; }
+
+
+
+
+
+
+/*struct ClipNode{
+	//struct Node node;
+	GUID node;
+	uint64 node_ptr;
+	GUID mNodeId;
+	GUID mExGuid;
+	ubyte mIsValid;
+	ubyte mIsEnable;
+	ubyte mIsMute;
+	FSkip(5);
+	GUID mChildPropertyPtrTbl;
+	GUID mChildNodePtrTbl;
+}clipNode;*/
+
+enum <uint16> PropertyType
+{
+  PropertyType_Unknown = 0x0,
+  PropertyType_Bool = 0x1,
+  PropertyType_S8 = 0x2,
+  PropertyType_U8 = 0x3,
+  PropertyType_S16 = 0x4,
+  PropertyType_U16 = 0x5,
+  PropertyType_S32 = 0x6,
+  PropertyType_U32 = 0x7,
+  PropertyType_S64 = 0x8,
+  PropertyType_U64 = 0x9,
+  PropertyType_F32 = 0xA,
+  PropertyType_F64 = 0xB,
+  PropertyType_Str8 = 0xC,
+  PropertyType_Str16 = 0xD,
+  PropertyType_Enum = 0xE,
+  PropertyType_Quaternion = 0xF,
+  PropertyType_Array = 0x10,
+  PropertyType_NativeArray = 0x11,
+  PropertyType_Class = 0x12,
+  PropertyType_NativeClass = 0x13,
+  PropertyType_Struct = 0x14,
+  PropertyType_Vec2 = 0x15,
+  PropertyType_Vec3 = 0x16,
+  PropertyType_Vec4 = 0x17,
+  PropertyType_Color = 0x18,
+  PropertyType_Range = 0x19,
+  PropertyType_Float2 = 0x1A,
+  PropertyType_Float3 = 0x1B,
+  PropertyType_Float4 = 0x1C,
+  PropertyType_RangeI = 0x1D,
+  PropertyType_Point = 0x1E,
+  PropertyType_Size = 0x1F,
+  PropertyType_Asset = 0x20,
+  PropertyType_Action = 0x21,
+  PropertyType_Guid = 0x22,
+  PropertyType_Uint2 = 0x23,
+  PropertyType_Uint3 = 0x24,
+  PropertyType_Uint4 = 0x25,
+  PropertyType_Int2 = 0x26,
+  PropertyType_Int3 = 0x27,
+  PropertyType_Int4 = 0x28,
+  PropertyType_OBB = 0x29,
+  PropertyType_Mat4 = 0x2A,
+  PropertyType_Rect = 0x2B,
+  PropertyType_PathPoint3D = 0x2C,
+  PropertyType_Plane = 0x2D,
+  PropertyType_Sphere = 0x2E,
+  PropertyType_Capsule = 0x2F,
+  PropertyType_AABB = 0x30,
+  PropertyType_Nullable = 0x31,
+  PropertyType_Sfix = 0x32,
+  PropertyType_Sfix2 = 0x33,
+  PropertyType_Sfix3 = 0x34,
+  PropertyType_Sfix4 = 0x35,
+  PropertyType_AnimationCurve = 0x36,
+  PropertyType_KeyFrame = 0x37,
+  PropertyType_GameObjectRef = 0x38,
+};
+
+//file begin:
+struct{
+    uint magic;
+    uint version;
+    float totalFrame;
+    uint rootNodeNum;
+    uint trackNum;
+    if (version >= 40)
+        uint uknRE8Num;
+    uint clipInfoNum;
+    uint nodeNum;
+    uint propertyNum;
+    uint keyNum;
+    if (version < 40) 
+        uint ukn;
+    if (version <= 27) 
+        rGUID MyGUID;
+	uint64 rootNodeTblPtr;
+	uint64 trackTblPtr;
+    if (version >= 40) 
+        uint64 uknRE8TblPtr; 
+    uint64 trackChildTblPtr;
+	uint64 nodeTblPtr;
+	uint64 propertyTblPtr;
+	uint64 keyTblPtr;
+	uint64 speedPointTblPtr;
+	uint64 interpolationHermiteTblPtr;
+	uint64 interpolationHermite3DTblPtr;
+    if (version <= 27) 
+	    uint64 uknTblPtr;
+    uint64 clipInfoTblPtr;
+	uint64 c8Ptr;
+	uint64 c16Ptr;
+	uint64 owordPtr;
+	uint64 dataPtr;
+}header;
+
+FSeek(header.rootNodeTblPtr);
+if (header.rootNodeNum)
+    struct {
+        uint64 offset[header.rootNodeNum];
+    } RootNodes;
+
+typedef struct {
+    unsigned __int64 enable : 1;
+    unsigned __int64 reserved : 63 <hidden=true>;
+    int clipNum;
+    int childNodeNum;
+    StringRead typeStr(0);
+    StringRead unicodeNameStr(1);
+    StringRead nameStr(1);
+    uint64 nodeStartIdx;
+} Track;
+
+FSeek(header.trackTblPtr);
+struct {
+    Track track[header.trackNum] <optimize=false>;
+}Tracks;
+
+if (exists(header.uknRE8TblPtr)) {
+    FSeek(header.uknRE8TblPtr);
+    //struct {
+        struct {
+            //int ukn[38] <optimize=false>;
+            int ukn;
+            float frameCount;
+            int ukn;
+            float frameCount2;
+            uint64 offset;
+            uint64 rootNodeOffset[header.rootNodeNum];
+        } uknRE8[header.uknRE8Num] <optimize=false>;
+    //} unknown;
+}
+
+typedef struct NODE {
+    struct NODEINFO {
+	    uint nodeNum;
+	    uint propertyNum;
+	    float beginFrame;
+	    float endFrame;
+	    rGUID rootNodeGuid;
+	    rGUID exId;
+        enum <int64> {
+            NodeType_Unknown = 0x0,
+            NodeType_GameObject = 0x1,
+            NodeType_Component = 0x2,
+            NodeType_Folder = 0x3,
+        } NodeType : 8;
+	    unsigned __int64 padding : 56 <hidden=true>;
+	    uint nameHash;
+	    uint unicodeNameHash;
+        
+        if (version == 27) {
+	        StringRead nameOffset(0);
+	        StringRead nodeTagOffset(1);
+        } else if (version == 18) {
+	        StringRead nameOffset(1);
+        } else StringRead nameOffset(1);
+
+        if (version >= 40) {
+            uint64 propertyOffset;
+	        uint64 childOffset;
+            uint64 propertyOffset;
+        } else {
+	        uint64 childOffset;
+            uint64 propertyOffset;
+        }
+    } NodeInfo <read=ReadNodeInfo, name="[Node Info]">;
+    if (exists(Properties)) {
+        FSeek(header.nodeTblPtr + nodeSz * NodeInfo.childOffset);
+        if (NodeInfo.nodeNum)
+            struct Node node[NodeInfo.nodeNum] <optimize=false>;
+        
+        FSeek(header.propertyTblPtr + propSz * NodeInfo.propertyOffset);
+        if (NodeInfo.propertyNum)
+            struct Property property[NodeInfo.propertyNum] <optimize=false>;
+    }
+    FSeek(startof(this)+nodeSz);
+};
+
+    string ReadNodeInfo(NODEINFO &n) { return EnumToString(n.NodeType); }
+
+typedef NODE Node <read=ReadNode, name=ReadNodeName, optimize=false>;
+
+FSeek(header.nodeTblPtr);
+
+if (!hideNodes)
+    struct { Node node[header.nodeNum]; } Nodes;
+else 
+    struct { Node node[header.nodeNum]; } Nodes <hidden=true>;
+
+    string ReadNodeName(Node &n) { return n.NodeInfo.nameOffset.String; } //"Node " + 
+
+    string ReadNode(Node &n) { string s; SPrintf(s, "[%g, %g]", n.NodeInfo.beginFrame, n.NodeInfo.endFrame); return s; }
+
+typedef struct PROPERTY {
+    struct PROPINFO {
+        if (version == 18) { //RE7
+            PropertyType propertyType : 8;
+            uint16 isEnumClosed : 1;
+            uint16 setAfterEndFrame : 1;
+            uint16 isExistLastKey : 1;
+            uint16 isRestoration : 1;
+            uint16 isSetDelegateEnable : 1;
+            uint16 isPrevDiffFrameSet : 1;
+            uint16 isNextDiffFrameSet : 1;
+            uint16 isPrevKeyValueSet : 1;
+            FSkip(2);
+            int ukn; 
+            float beginFrame;
+            float endFrame;
+            uint32 uknInt;
+            uint64 ukn00;
+            uint16 keyNum;
+            int16 arrayIndex;
+            uint64 ukn01;
+            uint64 ukn02;
+            StringRead nameOffset(0);
+            StringRead unicodeNameOffset(1);
+            uint64 ukn03, ukn05, ukn06;
+            uint64 childStartIndex;
+            uint64 childMembershipCount;
+            uint64 ukn07, unk08;
+        } else if (version >= 40) { //RE8, ReVerse, MHRise
+            float beginFrame;
+            float endFrame;
+            uint32 nameHash;
+            uint32 unicodeNameHash;
+            StringRead nameOffset(0);
+            uint64 ukn3;
+            uint32 childStartIndex;
+            uint32 keyNum; //guessing
+            uint16 childMembershipCount;
+            int16 ukn4;
+            int16 ukn5;
+            PropertyType propertyType : 8;
+            uint64 specialKeyOffset; 
+            uint64 ukn7, ukn8;
+            if (specialKeyOffset) {
+                FSeek(header.keyTblPtr + keySz * specialKeyOffset);
+                struct Key key;
+            }
+            FSeek(startof(ukn8)+8);
+        } else { //RE2, DMC5, RE3, Resistance
+            int ukn; 
+            float beginFrame;
+            float endFrame;
+            uint64 alwaysTwo;
+            PropertyType propertyType : 8;
+            uint16 isEnumClosed : 1;
+            uint16 setAfterEndFrame : 1;
+            uint16 isExistLastKey : 1;
+            uint16 isRestoration : 1;
+            uint16 isSetDelegateEnable : 1;
+            uint16 isPrevDiffFrameSet : 1;
+            uint16 isNextDiffFrameSet : 1;
+            uint16 isPrevKeyValueSet : 1;
+            FSkip(2);
+            uint32 nameHash;
+            uint32 unicodeNameHash;
+            StringRead nameOffset(0);
+            StringRead unicodeNameOffset(1);
+            uint64 keyOffset;
+            uint16 keyNum;
+            int16 arrayIndex;
+            uint16 speedPointNum;
+            uint16 ukn2;
+            uint64 lastKeyOffset;
+            uint64 childStartIndex;
+            uint64 childMembershipCount;
+        }
+    } PropInfo <read=ReadPropInfo, name="[Property Info]">;
+    
+    if (!exists(parentof(this).isProperties) && PropInfo.childMembershipCount)
+        switch (PropInfo.propertyType) 
+        {
+            case PropertyType_NativeArray:
+            case PropertyType_Nullable:
+            case PropertyType_NativeClass:
+            case PropertyType_Vec4:
+            case PropertyType_Vec3:
+            case PropertyType_Vec2:
+            case PropertyType_Float4:
+            case PropertyType_Quaternion:
+            case PropertyType_OBB:
+            case PropertyType_Mat4:
+                FSeek(header.propertyTblPtr + propSz * PropInfo.childStartIndex);
+                    struct Property ChildProp[PropInfo.childMembershipCount];
+                break;
+            default:
+                FSeek(header.keyTblPtr + keySz * PropInfo.childStartIndex);
+                struct Key key[PropInfo.childMembershipCount] <optimize=false>;
+                break;
+        }
+        
+    FSeek(startof(this) + propSz);
+};
+
+    string ReadPropInfo(PROPINFO &p) { 
+        return EnumToString(p.propertyType); }
+
+typedef PROPERTY Property <optimize=false, name=ReadPropertyName, read=ReadProperty>;
+
+FSeek(header.propertyTblPtr);
+struct {
+    local ubyte isProperties <hidden=true>;
+    Property property[header.propertyNum];
+}Properties;
+
+    string ReadPropertyName(Property &p) { return "Property " + p.PropInfo.nameOffset.String; }
+
+    string ReadProperty(Property &p) { string s; SPrintf(s, "[%g, %g]", p.PropInfo.beginFrame, p.PropInfo.endFrame); return s; }
+
+typedef struct KEY {
+    float frame;
+    float rate;
+    enum {
+        InterpolationType_Unknown = 0x0,
+        InterpolationType_Discrete = 0x1,
+        InterpolationType_Linear = 0x2,
+        InterpolationType_Event = 0x3,
+        InterpolationType_Slerp = 0x4,
+        InterpolationType_Hermite = 0x5,
+        InterpolationType_AutoHermite = 0x6,
+        InterpolationType_Bezier = 0x7,
+        InterpolationType_AutoBezier = 0x8,
+        InterpolationType_OffsetFrame = 0x9,
+        InterpolationType_OffsetSec = 0xA,
+        InterpolationType_PassEvent = 0xB,
+        InterpolationType_Bezier3D = 0xC,
+        InterpolationType_Range = 0xD,
+        InterpolationType_DiscreteToEnd = 0xE,
+    } interpolationType : 8;
+    uint32 instanceValue : 1;
+    uint32 reserved : 23 <hidden=true>;
+    uint32 reserved2 <hidden=true>;
+    
+    if (exists(parentof(this).PropInfo.propertyType)) {
+        switch (parentof(this).PropInfo.propertyType) {
+
+            //PropertyType_Unknown:
+            case PropertyType_Bool:
+            case PropertyType_S8:
+                byte value : 1; break;
+            case PropertyType_U8:
+                ubyte value : 1; break;
+            case PropertyType_S16:
+                int16 value; break;
+            case PropertyType_U16:
+                uint16 value; break;
+            case PropertyType_S32:
+                int32 value; break;
+            case PropertyType_U32:
+                uint32 value; break;
+            case PropertyType_S64:
+                int64 value; break;
+            case PropertyType_U64:
+                uint64 value; break;
+            case PropertyType_F32:
+                double value; break;
+            case PropertyType_F64:
+                double value; break;
+            case PropertyType_Str8:
+            case PropertyType_Enum:
+                StringRead value(0); break;
+            case PropertyType_Guid:
+            case PropertyType_Str16:
+            case PropertyType_Asset:
+                StringRead value(1); break;
+                //uint ukn;
+                //enum {
+                //    PlayState_Play = 0x0,
+                //    PlayState_Pause = 0x1,
+                //    PlayState_Stop = 0x2,
+                //} PlayState;
+            default:
+                int64 value;
+                break;
+        }
+    } else {
+        int64 value;
+        FSkip(-8);
+        double value;
+    }
+    FSeek(startof(value)+8);
+    
+    uint64 interpolationOffset;
+    if (version < 40 && interpolationType == InterpolationType_Hermite) {
+        FSeek(header.interpolationHermiteTblPtr + interpolationOffset * 4);
+        float interpolationHermiteValue;
+        FSeek(startof(interpolationOffset)+8);
+    }
+    if (version <= 27) {
+        uint64 padding <hidden=true>;
+    }
+};
+
+typedef KEY Key <name=ReadKeyName, read=ReadKey, write=WriteKey>;
+    
+    string ReadKeyName (Key &k) { string s; SPrintf(s, "Key@%g ", k.frame); return s; }
+    
+    string ReadKey (Key &k) { 
+        local string s, t;
+        if (exists(k.value.String)) {
+            s += (wstring)k.value.String;
+        } else if (detectedFloat(startof(k.value)) || detectedFloat(startof(k.value)+4) && ReadUInt64(startof(k.value)) != 0)
+            SPrintf(s, "%lf", ReadDouble(startof(k.value)));
+        else
+            SPrintf(s, "%i", ReadInt(startof(k.value)));
+        if (exists(k.interpolationHermiteValue)) 
+            SPrintf(s, "%s  (%lf)", s, k.interpolationHermiteValue);
+        
+        return s; 
+    }
+
+    void WriteKey(Key &k, string s) {
+        if (exists(parentof(k).PropInfo) && parentof(k).PropInfo.propertyType == PropertyType_F32)
+            WriteDouble(startof(k.value), Atof(s));
+        else if (exists(k.value.String))
+            WriteStringRead(k.value, s);
+        else
+            WriteInt64(startof(k.value), Atoi(s));
+    }
+
+FSeek(header.keyTblPtr);
+struct {
+    Key key[header.keyNum] <optimize=false>;
+}Keys;
+
+if (header.speedPointTblPtr != header.interpolationHermiteTblPtr) {
+    FSeek(header.speedPointTblPtr);
+    struct {
+        uint64 ukn, ukn, ukn;
+        float uknFloat, uknFloat;
+        uint64 ukn, ukn;
+    } SpeedPoint[header.propertyNum];
+}
+
+FSeek(header.c8Ptr);
+struct {
+    i=0;
+    while (i < header.propertyNum + header.nodeNum + header.trackNum + 1 && ReadUInt(FTell()) != 0) {
+        struct cString String(0);
+        i++;
+    }
+} Strings;
+
+
+FSeek(header.c16Ptr);
+struct {
+    i=0;
+    while (FTell()+4 <= FileSize() && header.propertyNum + header.nodeNum + header.trackNum + 2 && ReadUInt(FTell()) != 0) {
+        struct cString WString(1);
+        i++;
+    }
+} WStrings;
+
+SetForeColor(cGreen);
+FSeek(RootNodes.offset[0]);
+struct {
+    for (i=0; i<header.trackNum; i++) {
+        struct sortedTrack {
+            local int idx <hidden=true> = i;
+            for (j=Tracks.track[i].nodeStartIdx; j<Tracks.track[i].nodeStartIdx + Tracks.track[i].childNodeNum; j++) {
+                FSeek(RootNodes.offset[j]);
+                struct Node RootNode;
+            }
+        } track <name=ReadTrackName, read=ReadTrack>;
+    }
+} Data <name="Sorted Data">;
+
+    wstring ReadTrackName (sortedTrack &st) { 
+        if (Tracks.track[st.idx].nameStr.String != "") 
+            return Tracks.track[st.idx].nameStr.String; 
+        return Tracks.track[st.idx].unicodeNameStr.String; 
+    } 
+
+    wstring ReadTrack (sortedTrack &st) { return Tracks.track[st.idx].typeStr.String; } 

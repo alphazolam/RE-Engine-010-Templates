@@ -1,0 +1,1174 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_GUI.bt
+//   Authors: alphaZomega
+//   Version: 1.32
+//   Purpose: Editing RE Engine gui.180014, gui.270020, gui.340020, gui.400022, and gui.400023 files
+//  Category: RE Engine
+// File Mask: *.gui.180014;*.gui.270020;*.gui.340020;*.gui.400022;*.gui.400023
+//  ID Bytes: [+4] 47 55 49 52
+//   History: January 26, 2021
+//------------------------------------------------
+
+LittleEndian();
+
+//global vars
+local uint64 R <hidden=true>, G <hidden=true>, B <hidden=true>, A <hidden=true>;
+local int version <hidden=true>, i <hidden=true>, j <hidden=true>, k <hidden=true>, colorType <hidden=true>,
+    pos <hidden=true>, pos2 <hidden=true>, offsets[10000] <hidden=true>, offsetCounter <hidden=true> = 0;
+local string fName <hidden=true> = GetFileName();
+local int strSz <hidden=true> = Strlen(fName);
+local uint64 Type <hidden=true>;
+
+//motlist template versions, whatever
+local uint Version <hidden=true> = 85; //RE2 + DMC5; other versions set up in the File Header
+
+
+//typedef structs
+typedef byte BLANK <name=readBLANK,read=readBLANK, write=null>;
+    
+    string readBLANK(BLANK &ref) { return " ";}
+
+    //Special Make-Unique write function:
+    void MakeUnique(BLANK &b, string s) {
+        uint i, j, k, m, exit, ctr;
+        uchar bytes[1000];
+        for (i=0; i<HEADER.numOffs; i++) {
+            for (j=0; j<Elements.Element[i].ElementInfo.subElementCount; j++) {
+                for (k=0; k<Elements.Element[i].SubElement[j].itemCount; k++) {
+                    if (exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset) && exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes) 
+                    && Elements.Element[i].SubElement[j].Attributes.Attribute[k].isPointer) {
+                        ctr = 0;
+                        for (m=0; m<10000; m++) {
+                            if (offsets[m] == Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset)
+                                ctr++;
+                            if (offsets[m] == 0 || ctr > 1) { //exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].valueOffset) && 
+                                Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset = FileSize();
+                                ConvertDataToBytes(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes, bytes );
+                                WriteBytes(bytes, FileSize(), sizeof(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes));
+                                if (Elements.Element[i].SubElement[j].Attributes.Attribute[k].AttributeInfo.Name == "ColorOffset") {
+                                    WriteFloat(FileSize()-16, 1); WriteFloat(FileSize()-12, 1); WriteFloat(FileSize()-8, 1); WriteFloat(FileSize()-4, 1);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        MessageBox( idOk, "Insert Data", "Press F5 to refresh the template and fix template results");
+    }
+
+    string ReadUniqueWriterName (BLANK &u) { return "[MakeUnique Script]"; }
+    
+    string ReadUniqueWriter (BLANK &u) { return "--> [Input Here to make all values unique] <--"; }
+
+typedef struct {
+    wstring str;
+} USTRING <read=ReadUSTRING>;
+    wstring ReadUSTRING(USTRING &input) { return input.str; }
+
+typedef struct { string str; } STRING <read=ReadSTRING>;
+    string ReadSTRING (STRING &input) { return input.str; }
+
+typedef ubyte COLORBYTE <read=ReadCOLORBYTE, write=WriteCOLORBYTE>;
+	string ReadCOLORBYTE (COLORBYTE input) { string s; SPrintf( s, "%g", input / 255.0f ) ;  return s ; }
+	void WriteCOLORBYTE (COLORBYTE &f, string s ) { local float ff = Atof(s); f = (COLORBYTE)((ubyte)(ff * 255.0f));}
+
+typedef struct {
+    uint32 type, padding <hidden=true>; 
+    uint64 nameOffset;
+    FSeek(nameOffset);
+    string Name;
+    FSeek(startof(nameOffset)+8);
+} ATTRIBUTEINFO <read=ReadATTRIBUTEINFO>;
+    string ReadATTRIBUTEINFO(ATTRIBUTEINFO &input) { return (parentof(input).type); }
+
+typedef struct {
+    ATTRIBUTEINFO AttributeInfo;
+    local wstring Name <hidden=true> = AttributeInfo.Name;
+    //local uint64 valueOffset <hidden=true> = ReadUInt64(FTell());
+    uint64 Value_Offset;
+    if (version > 430000)
+        uint64 ukn;
+    local string type <hidden=true> = "";
+    
+    //record if value is unique or not:
+    local ubyte uniqueOffset <hidden=true> = false;
+    local uint offsetIdx <hidden=true> = 0;
+    if (Value_Offset > FTell() && Value_Offset < FileSize() && AttributeInfo.type > 10) {
+        for (k=0; k<10000; k++) {
+            if (Value_Offset == offsets[k] || offsets[k] == 0) {
+                if (offsets[k] == 0)
+                    uniqueOffset = true;
+                break;
+            }
+        }
+        if (uniqueOffset == true) {
+            offsets[offsetCounter] = Value_Offset;
+            offsetIdx = offsetCounter;
+            offsetCounter += 1;
+        }
+        FSeek(Value_Offset);
+    } else
+        FSeek(startof(Value_Offset));
+    uniqueOffset = false; //(so that the writer can change it to true after adding a unique one)
+    local ubyte isPointer;
+    switch (AttributeInfo.type) {
+        case 1:
+            type = "bool";
+            uint32 Value;
+            break;
+        case 3:
+        case 5:
+        case 6: //RE3
+        case 7:
+        case 4: //UV
+            type = "int";
+            uint32 Value;
+            break;
+        case 10:
+            type = "float"; FSkip(4);
+            float Value;
+            break;
+        case 14:
+        case 43: //(RE3)
+            type = "string";
+            string Value <open=suppress>;
+            isPointer = true;
+            break;
+        case 13:
+        case 32: //filepath
+        case 34: //string (RE3)
+            type = "wstring";
+            wstring Value <open=suppress>;
+            isPointer = true;
+            break;
+        case 22:
+        case 26:
+            type = "vector4";
+			struct {
+				float Red <name="X">, Green <name="Y">, Blue <name="Z">;
+            	if (Name != "Position" && Name != "Scale") 
+                	float Alpha <name="W">;
+				else local float Value_W <hidden=true>;
+            } Value;
+            isPointer = true;
+            break;
+        case 21: //RE3
+        case 31: //vector3
+            type = "vector3";
+			struct {
+				float Red <name="X">, Green <name="Y">, Blue <name="Z">;
+            } Value;
+            isPointer = true;
+            break;
+        case 24: //color (bytes)
+            type = "color";
+            colorType = 1;
+            readColor();
+            isPointer = true;
+            break;
+        case 27:
+        case 28: //color (floats)
+            type = "color";
+            colorType = 0;
+            readColor();
+            isPointer = true;
+            break;
+        default:
+            break;
+    }
+    if (exists(Value)) {
+	    local uint valueSz <hidden=true> = FTell() - startof(Value);
+	    FSeek(startof(Value));
+	    uchar bytes[valueSz] <hidden=true>;
+    } else 
+        local uint valueSz <hidden=true> = 0;
+    FSeek(startof(this)+24 + 8 * (version > 430000));
+    //if (!exists(Value))
+    //    Printf(assertFailed);
+} ATTRIBUTE <name=ReadATTRIBUTENAME, read=ReadATTRIBUTE, write=WriteATTRIBUTE, optimize=false>; // 
+    string ReadATTRIBUTENAME (ATTRIBUTE &input) { 
+        if (!exists(input.Value)) {
+            return ("*" + input.Name); 
+        } return input.Name; 
+    }
+    string ReadATTRIBUTE (ATTRIBUTE &input) { 
+        string value = "";
+        if (exists(input.Value)) {
+            if (input.type == "float") {
+                SPrintf(value, "%f", input.Value);
+            } else if (input.type == "bool") {
+                input.Value == false ? value = "False" : value = "True";
+            } else if (input.type == "int") {
+                SPrintf(value, "%g", input.Value);
+            } else if (input.type == "color") {
+                SPrintf(value, "[%g, %g, %g, %g]", input.Value.Red, input.Value.Green, input.Value.Blue, input.Value.Alpha);
+            } else if (exists(input.Value.Blue) && !exists(input.Value.Alpha)) {
+                SPrintf(value, "[%g, %g, %g]", input.Value.Red, input.Value.Green, input.Value.Blue);
+            } else if (exists(input.Value.Blue) && exists(input.Value.Alpha)) {
+                SPrintf(value, "[%g, %g, %g, %g]", input.Value.Red, input.Value.Green, input.Value.Blue, input.Value.Alpha);
+            } else if (input.type == "wstring" || input.type == "string") {
+                value = input.Value;
+            }
+        }
+        return (value); 
+    }
+    void WriteATTRIBUTE(ATTRIBUTE &input, string s) {
+        if (exists(input.Value)) {
+            local ubyte doWrite = false;
+            /*if ((exists(input.Value_Offset) && input.uniqueOffset == false) ||
+            (doesExist(input.type,"string") && sizeof(s) > sizeof((string)input.Value))) {
+                for (j=0; j<10000; j++)
+                    if (offsets[j] == input.Value_Offset) {
+                        if (input.offsetIdx == j)
+                            break;
+                        doWrite = true;
+                        input.uniqueOffset = false;
+                        local uint64 writePos = FileSize();
+                        input.Value_Offset = writePos;
+                        break;
+                    } else if (offsets[j] == 0)
+                        break;
+            }*/
+
+            if (input.type == "string") {
+                if (exists(writePos)) {
+                    InsertBytes(writePos, sizeof(s), 0);
+                    WriteString(writePos, s);
+                } else input.Value = s;
+            } else if (input.type == "wstring") {
+                if (exists(writePos)) {
+                    InsertBytes(writePos, sizeof((wstring)s), 0);
+                    WriteWString(writePos, (wstring)s);
+                } else input.Value = (wstring)s;
+            } else {
+                if (doWrite)
+                    InsertBytes(writePos, 4, 0);
+                if (input.type == "float") {
+                    if (doWrite)
+                        WriteFloat(writePos, Atof(s));
+                    else input.Value = Atof(s);
+                } else if (input.type == "bool") {
+                    if (Lower(s) == "true") s = "1";
+                    else if (Lower(s) == "false") s = "0";
+                    if (doWrite)
+                        WriteUInt(writePos, Atoi(s));
+                    else input.Value = Atoi(s);
+                } else if (input.type == "int") {
+                    if (doWrite)
+                        WriteUInt(writePos, Atoi(s));
+                    else input.Value = Atoi(s);
+                } else if ((input.type == "color" || input.type == "vector3" || input.type == "vector4")) {
+					if (doWrite) {
+                    	if (sizeof(input.Value) > 4) {
+                        	if (input.type == "vector3" || input.Name == "Position" || input.Name == "Scale")
+                            	InsertBytes(writePos, 8, 0);
+                        	else 
+                                InsertBytes(writePos, 12, 0);
+                            local float x, y, z, w;
+                            SScanf( s, "%g %g %g %g", x, y, z, w);
+                            if (w == 0) w = 1;
+                        	WriteFloat(writePos, x);
+                        	WriteFloat(writePos+4, y);
+                        	WriteFloat(writePos+8, z);
+                        	if (input.type == "vector4" || input.type == "color")
+                            	WriteFloat(writePos+12, w);
+                    	} else { 
+                        	WriteUByte(writePos, Atoi(s));
+                        	WriteUByte(writePos+1, Atoi(s));
+                        	WriteUByte(writePos+2, Atoi(s));
+                        	WriteUByte(writePos+3, 255);
+                    	}
+                	} else {
+						if (exists(input.Value.Alpha)) {
+							if (doesExist(s, ",")) {
+								SScanf( s, "%g,%g,%g,%g", input.Value.Red, input.Value.Green, input.Value.Blue, input.Value.Alpha);
+							} else { SScanf( s, "%g %g %g %g", input.Value.Red, input.Value.Green, input.Value.Blue, input.Value.Alpha); }
+						} else if (doesExist(s, ",")) { 
+							SScanf( s, "%g,%g,%g", input.Value.Red, input.Value.Green, input.Value.Blue);
+						} else { SScanf( s, "%g %g %g", input.Value.Red, input.Value.Green, input.Value.Blue);  }
+					}
+                    
+				}
+            }
+            if (doWrite)
+                MessageBox( idOk, "Insert Data", "New Unique value added at End of File\nRefresh the template with F5 to edit it");
+        }
+    }
+
+typedef struct {
+    struct rGUID Guid, Guid;
+    if (HEADER.guiVersion >= 400022) {
+        uint64 ukn;
+        uint64 ukn;
+    }
+    struct StringRead Name(-1,0,0,0,0);
+    struct StringRead className(-1,0,0,1,0);
+    uint64 subStructOffs;
+    uint64 subStructEndOffs;
+    uint64 padding <hidden=true>; 
+} SUBELEMENTINFO <read=ReadSUBELEMENTINFO>;
+    string ReadSUBELEMENTINFO (SUBELEMENTINFO &input) { return input.className.String; }
+
+typedef struct {
+    SUBELEMENTINFO SubElementInfo;
+    FSeek(SubElementInfo.subStructOffs);
+    uint64 itemCount; 
+    if (itemCount)
+        struct {
+            ATTRIBUTE Attribute[itemCount];
+        } Attributes <open=true>;
+    FSeek(SubElementInfo.subStructEndOffs);
+    
+    if (ReadUInt()) {
+        struct {
+            int A, B, C, D;
+            struct StringRead sName1(-1,0,0,1,0);
+            int64 valueOffs;
+            int E, F;
+            struct StringRead sName2(-1,0,0,1,0);
+            int64 G;
+            struct rGUID Guid;
+            int64 H;
+            struct StringRead wName(-1,0,0,0,0);
+        } Unknown;
+    }
+    BLANK blank; FSkip(-1);
+} SUBELEMENT <name="SubElement", read=ReadSUBELEMENT>;
+    string ReadSUBELEMENT (SUBELEMENT &input) { return input.SubElementInfo.Name.String; }
+
+typedef struct {
+    struct rGUID Guid;    
+    uint64 nameOffs, viaOffs, offs2, offs3;
+    pos = FTell();
+    FSeek(offs2); 
+    uint64 subElementCount;
+    if (subElementCount)
+        uint64 offs[subElementCount];
+    FSeek(offs3); 
+    uint32 E, clipCount;
+    if (clipCount)
+        uint64 offset[clipCount];
+    FSeek(nameOffs);
+    wstring Name; 
+    FSeek(viaOffs);
+    string className;
+    FSeek(startof(offs3)+8);
+} ELEMENTINFO <name="ElementInfo", read=ReadELEMENTINFO>;
+    string ReadELEMENTINFO (ELEMENTINFO &input) { return input.className; }
+
+typedef struct {
+    ELEMENTINFO ElementInfo;
+    
+    for (j=0; j<ElementInfo.subElementCount ; j++){
+        FSeek(ElementInfo.offs[j]);
+        SUBELEMENT SubElement;
+    }
+    
+    if (false && ElementInfo.clipCount) {
+        FSeek(ElementInfo.offset[0]);
+        struct CLIP {
+            local int z <hidden=true>;
+            for (z=0; z<ElementInfo.clipCount; z++) {
+                FSeek(ElementInfo.offset[z]);
+                struct CLIP_ENTRY Clip;
+            }
+            if (FTell()<=startof(this))
+                FSeek(startof(Clip[0])+sizeof(Clip[0]));
+        } Clip <name="CLIP Data", read=ReadCLIP>;
+        
+    }
+    FSeek(startof(ElementInfo)+sizeof(ElementInfo));
+} ELEMENT <name="Element", read=ReadELEMENT>;
+    string ReadELEMENT (ELEMENT &input) { return input.ElementInfo.Name; }
+    string ReadCLIP (CLIP &input) { return ReadCLIP_ENTRY(input.Clip[0]); }
+
+//functions
+int doesExist(string str, string term) {
+    local int matchSize;
+    return (RegExSearch(str, term, matchSize, 0) != -1);
+}
+
+int detectedFloat(uint64 offset) {
+    if (offset+4 <= FileSize())
+        if (ReadUByte(offset+3) < 255)
+            if (Abs(ReadFloat(offset)) > 0.0000001)
+                if (Abs(ReadFloat(offset)) < 1000000)
+                    return true;
+    return false;
+}
+
+string Lower(string stringIn) {
+    local string s2 = stringIn;
+    for (k=0; k < sizeof(stringIn); k++) {
+        s2[k] = ToLower(stringIn[k]);
+    }
+    return s2;
+}
+
+void readColor() {
+    if (colorType == 1) { //for reader
+        COLORBYTE Value <hidden=true>, Blue <hidden=true>, Green <hidden=true>, Alpha <hidden=true>; 
+    } else {
+        float Value <hidden=true>, Blue <hidden=true>, Green <hidden=true>, Alpha <hidden=true>; 
+    } 
+    FSeek(startof(Value));
+    if (colorType) {
+        R = ReadUByte(FTell());
+        G = ReadUByte(FTell()+1);
+        B = ReadUByte(FTell()+2);
+        A = ReadUByte(FTell()+3);
+    } else {
+        R = ReadFloat(FTell()) * 255.0f + 0.5;
+        G = ReadFloat(FTell()+4) * 255.0f + 0.5;
+        B = ReadFloat(FTell()+8) * 255.0f + 0.5;
+        A = ReadFloat(FTell()+12) * 255.0f + 0.5;
+    }
+    SetBackColor((B<<16) | (G<<8) | (R));
+    struct { //in a struct for easy copy+paste
+        SetForeColor(R);
+        if (colorType) COLORBYTE Red; else float Red;
+        SetForeColor(G<<8);
+        if (colorType) COLORBYTE Green; else float Green;
+        SetForeColor(B<<16);
+        if (colorType) COLORBYTE Blue; else float Blue;
+        SetForeColor((A<<16) + (A<<8) + A);
+        if (colorType) COLORBYTE Alpha; else float Alpha;
+        SetForeColor(cGreen);
+        SetBackColor(cNone);
+    } Value <name="Color", open=true>;
+    FSkip(-1); BLANK blank; 
+}
+
+//generic string reader
+typedef struct(int64 atAddress, int64 addOffset, ubyte isAbsolute, ubyte isUTF8, ubyte isUint32) 
+{
+    if (!isAbsolute) {
+        if (atAddress != -1)
+            FSeek(atAddress);
+        if (isUint32)
+            uint32 strOffset;
+        else
+            uint64 strOffset;
+        FSeek(strOffset + addOffset);
+    } else 
+        FSeek(atAddress + addOffset);
+
+    if (!exists(strOffset) || strOffset > 0)
+        if (isUTF8)
+            string String;
+        else
+            wstring String;
+    
+    if (exists(strOffset)) {
+        if (atAddress == -1 || startof(this) == atAddress)
+            FSeek(startof(strOffset) + 8 - isUint32 * 4);
+        else 
+            FSeek(startof(this)+1);
+    }
+    
+} StringRead <read=ReadStringRead, write=WriteStringRead>;
+
+    wstring ReadStringRead(StringRead &st) { 
+        if (exists(st.String)) 
+            return st.String;
+        local string s;
+        if (exists(st.strOffset))
+            SPrintf(s, "%i", st.strOffset); 
+        return s; 
+    }
+    
+    void WriteStringRead(StringRead &st, string s) { 
+        if (exists(st.String))
+            st.String = s; 
+        else if (exists(st.strOffset))
+            st.strOffset = Atoi(s);
+    }
+
+typedef struct {
+    uchar uuid[16];
+} rGUID <read=ReadrGUID>;
+
+    string ReadrGUID (rGUID &g) {
+        local char s[37];
+        SPrintf(s, 
+            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
+            g.uuid[0], g.uuid[1], g.uuid[2], g.uuid[3], g.uuid[4], g.uuid[5], g.uuid[6], g.uuid[7],
+            g.uuid[8], g.uuid[9], g.uuid[10], g.uuid[11], g.uuid[12], g.uuid[13], g.uuid[14], g.uuid[15]
+        );
+        return s;
+    }
+
+typedef struct KEY {
+    float frame;
+    float rate;
+    enum {
+        InterpolationType_Unknown = 0x0,
+        InterpolationType_Discrete = 0x1,
+        InterpolationType_Linear = 0x2,
+        InterpolationType_Event = 0x3,
+        InterpolationType_Slerp = 0x4,
+        InterpolationType_Hermite = 0x5,
+        InterpolationType_AutoHermite = 0x6,
+        InterpolationType_Bezier = 0x7,
+        InterpolationType_AutoBezier = 0x8,
+        InterpolationType_OffsetFrame = 0x9,
+        InterpolationType_OffsetSec = 0xA,
+        InterpolationType_PassEvent = 0xB,
+        InterpolationType_Bezier3D = 0xC,
+        InterpolationType_Range = 0xD,
+        InterpolationType_DiscreteToEnd = 0xE,
+    } interpolationType : 8;
+    uint32 instanceValue : 1;
+    uint32 reserved : 23 <hidden=true>;
+    uint32 reserved2 <hidden=true>;
+    
+    if (exists(parentof(this).PropInfo.DataType)) {
+        switch (parentof(this).PropInfo.DataType) {
+
+            //PropertyType_Unknown:
+            case PropertyType_Bool:
+            case PropertyType_S8:
+                byte value; break;
+            case PropertyType_U8:
+                ubyte value; break;
+            case PropertyType_S16:
+                int16 value; break;
+            case PropertyType_U16:
+                uint16 value; break;
+            case PropertyType_S32:
+                int32 value; break;
+            case PropertyType_U32:
+                uint32 value; break;
+            case PropertyType_S64:
+                int64 value; break;
+            case PropertyType_U64:
+                uint64 value; break;
+            case PropertyType_F32:
+                double value; break;
+            case PropertyType_F64:
+                double value; break;
+            case PropertyType_Str8:
+            case PropertyType_Enum:
+                uint64 value; 
+                FSeek(clipHeader.namesOffsExtra[1] + start + value);
+                string String;
+                break;
+            case PropertyType_Guid:
+            case PropertyType_Str16:
+            case PropertyType_Asset:
+                uint64 value; 
+                FSeek(clipHeader.unicodeNamesOffs + start + value*2);
+                wstring String;
+                break;
+            default:
+                int64 value;
+                break;
+        }
+    } else {
+        int64 value;
+        FSkip(-8);
+        double value;
+    }
+    
+    FSeek(startof(this)+keySize);
+};
+
+typedef KEY clipKey <name=ReadKeyName, read=ReadClipKey, write=WriteClipKey>;
+    
+    string ReadKeyName (clipKey &k) { string s; SPrintf(s, "Key@%g ", k.frame); return s; }
+    
+    string ReadClipKey (clipKey &k) { 
+        local string s;
+        if (exists(k.String)) {
+            s += (wstring)k.String;
+        } else if (ReadInt64(startof(k.value)) != 0 && (detectedFloat(startof(k.value)) || detectedFloat(startof(k.value)+4)))
+            SPrintf(s, "%lf", ReadDouble(startof(k.value)));
+        else
+            SPrintf(s, "%i", ReadInt(startof(k.value)));
+        if (exists(k.interpolationHermiteValue)) 
+            SPrintf(s, "%s  (%lf)", s, k.interpolationHermiteValue);
+        return s; 
+    }
+
+    void WriteClipKey(clipKey &k, string s) {
+        if (exists(parentof(k).PropInfo.DataType) && parentof(k).PropInfo.DataType == PropertyType_F32)
+            WriteDouble(startof(k.value), Atof(s));
+        else
+            WriteInt64(startof(k.value), Atoi(s));
+    }
+
+enum <ubyte> PropertyType
+{
+  PropertyType_Unknown = 0x0,
+  PropertyType_Bool = 0x1,
+  PropertyType_S8 = 0x2,
+  PropertyType_U8 = 0x3,
+  PropertyType_S16 = 0x4,
+  PropertyType_U16 = 0x5,
+  PropertyType_S32 = 0x6,
+  PropertyType_U32 = 0x7,
+  PropertyType_S64 = 0x8,
+  PropertyType_U64 = 0x9,
+  PropertyType_F32 = 0xA,
+  PropertyType_F64 = 0xB,
+  PropertyType_Str8 = 0xC,
+  PropertyType_Str16 = 0xD,
+  PropertyType_Enum = 0xE,
+  PropertyType_Quaternion = 0xF,
+  PropertyType_Array = 0x10,
+  PropertyType_NativeArray = 0x11,
+  PropertyType_Class = 0x12,
+  PropertyType_NativeClass = 0x13,
+  PropertyType_Struct = 0x14,
+  PropertyType_Vec2 = 0x15,
+  PropertyType_Vec3 = 0x16,
+  PropertyType_Vec4 = 0x17,
+  PropertyType_Color = 0x18,
+  PropertyType_Range = 0x19,
+  PropertyType_Float2 = 0x1A,
+  PropertyType_Float3 = 0x1B,
+  PropertyType_Float4 = 0x1C,
+  PropertyType_RangeI = 0x1D,
+  PropertyType_Point = 0x1E,
+  PropertyType_Size = 0x1F,
+  PropertyType_Asset = 0x20,
+  PropertyType_Action = 0x21,
+  PropertyType_Guid = 0x22,
+  PropertyType_Uint2 = 0x23,
+  PropertyType_Uint3 = 0x24,
+  PropertyType_Uint4 = 0x25,
+  PropertyType_Int2 = 0x26,
+  PropertyType_Int3 = 0x27,
+  PropertyType_Int4 = 0x28,
+  PropertyType_OBB = 0x29,
+  PropertyType_Mat4 = 0x2A,
+  PropertyType_Rect = 0x2B,
+  PropertyType_PathPoint3D = 0x2C,
+  PropertyType_Plane = 0x2D,
+  PropertyType_Sphere = 0x2E,
+  PropertyType_Capsule = 0x2F,
+  PropertyType_AABB = 0x30,
+  PropertyType_Nullable = 0x31,
+  PropertyType_Sfix = 0x32,
+  PropertyType_Sfix2 = 0x33,
+  PropertyType_Sfix3 = 0x34,
+  PropertyType_Sfix4 = 0x35,
+  PropertyType_AnimationCurve = 0x36,
+  PropertyType_KeyFrame = 0x37,
+  PropertyType_GameObjectRef = 0x38,
+};
+
+typedef struct {
+    struct PROPINFO {
+        if (Version != 486) 
+            uint32 pad <hidden=true>;
+        if (Version == 60)
+            int32 uknRE7;
+        float ValueA <name="Value A (Start)">;
+        float ValueB <name="Value B (End)">;
+        if (Version==60) {
+            uint32 U32_1;
+            //uint32 U32_2;
+        } else 
+            uint64 U64_1;
+        
+        if (Version == 486) { //RE8
+                uint64 nameOffset;
+                uint64 dataOffset;
+                uint64 ChildStartIndex;
+                ushort ChildMembershipCount;
+                short arrayIndex;
+                short speedPointNum;
+                PropertyType DataType;
+                ubyte uknByte;
+                uint64 lastKeyOffset;
+                uint64 speedPointOffset;
+                uint64 clipPropertyOffset;
+        } else {
+            
+            PropertyType DataType;
+            ubyte uknCount <hidden=true>;
+            FSkip(2);
+            if (Version == 99)
+                uint64 RE3hash;
+            else 
+                FSkip(8);
+            
+            if (Version == 60) {
+                FSkip(8);
+                uint64 uknRE7;
+            }
+            uint64 nameOffset, nameOffset;
+            
+            if (Version == 60) {
+                uint64 uknRE7;
+                FSkip(8); 
+            } 
+            
+            FSkip(8);
+            if (Version != 60)
+                FSkip(16);
+
+            uint64 ChildStartIndex, ChildMembershipCount <write=InsertClipKey>;
+            
+            if (Version == 60) {
+                FSkip(8);
+                uint64 uknRE7;
+            }
+        }
+        FSeek(clipHeader.namesOffsExtra[1] + start + PropInfo.nameOffset[0]);
+        string FunctionName  <hidden=false>;
+        if (Version != 486 && PropInfo.nameOffset[1] > 0) {
+            FSeek(clipHeader.unicodeNamesOffs + start + PropInfo.nameOffset[1]*2);
+            wstring wFunctionName <hidden=false>;
+        }
+        FSeek(startof(this)+propSize);
+    } PropInfo <read=ReadPROPINFO, name="[PropInfo]">;
+    
+    switch (PropInfo.DataType) {
+        case PropertyType_NativeArray:
+        case PropertyType_Nullable:
+        case PropertyType_NativeClass:
+        case PropertyType_Range:
+        case PropertyType_RangeI:
+        case PropertyType_Vec4:
+        case PropertyType_Vec3:
+        case PropertyType_Vec2:
+        case PropertyType_Float4:
+        case PropertyType_Quaternion:
+        case PropertyType_OBB:
+        case PropertyType_Mat4:
+        case PropertyType_Class:
+        case PropertyType_Array:
+        case PropertyType_Struct:
+        case PropertyType_Color:
+        case PropertyType_Float2:
+        case PropertyType_Float3:
+        case PropertyType_Point:
+            FSeek(clipHeader.propertiesOffs + start + (propSize*PropInfo.ChildStartIndex));
+            if (PropInfo.ChildMembershipCount)
+                struct PROPERTY ChildProp[PropInfo.ChildMembershipCount] <optimize=false>;
+            break;
+        default:
+            FSeek(clipHeader.keysOffs + start + (keySize*PropInfo.ChildStartIndex));
+            if (PropInfo.ChildMembershipCount){
+                Type = PropInfo.DataType;
+                struct clipKey Keys[PropInfo.ChildMembershipCount] <optimize=false>;
+            }
+            break;
+    }
+    
+    FSeek(startof(this)+propSize);
+} PROPERTY <name=ReadPROPERTYNAME, read=ReadPROPERTY, write=WritePROPERTY>;
+
+    string ReadPROPERTY (PROPERTY &input) { 
+        string s = "";
+        SPrintf(s, "[%i, %i]", input.PropInfo.ValueA, input.PropInfo.ValueB );
+        return s; 
+    }
+    
+    string ReadPROPERTYNAME (PROPERTY &input) { 
+        local string fnName;
+        if (exists(input.PropInfo.FunctionName)) {
+            fnName = input.PropInfo.FunctionName;
+            if (exists(input.PropInfo.wFunctionName))
+                fnName = input.PropInfo.wFunctionName;
+            if (exists(input.ChildProp)) {
+                local string s;
+                SPrintf(s, "*[%ix] %s", input.PropInfo.ChildMembershipCount, fnName );
+                return s;
+            } else if (exists(input.Keys))
+                return  "* " + fnName;
+            else 
+                return fnName; 
+        }
+        return ""; 
+    }
+    
+    void WritePROPERTY (PROPERTY &f, string s ) {  SScanf(s, "%g %g", f.PropInfo.ValueA, f.PropInfo.ValueB); }
+
+    string ReadPROPINFO(PROPINFO &p) { return EnumToString(p.DataType); }
+
+    //General offset fixer
+    void FixOffsets(uint64 tell, uint64 limitPoint, uint64 relStart, uint64 relEnd, uint64 insertPoint, uint64 addedSz, int doInt32) {
+        if (tell > limitPoint)
+            return;
+        local uint64 pos = FTell();
+        local int64 tmp;
+        local int varSize = 8 + -4 * doInt32;
+        local int64 startBound = insertPoint - relStart - keySize;
+        local int64 endBound = relEnd - relStart;
+        FSeek(tell);
+        while(FTell() + varSize <= limitPoint) {
+            if (FTell()+varSize > FileSize()) 
+                break;
+            if (doInt32==1)
+                tmp = ReadInt(FTell());
+            else 
+                tmp = ReadInt64(FTell());
+            if (tmp >= startBound && tmp < endBound) {
+                if (doInt32==true) 
+                    tmp = WriteUInt(FTell(), tmp+addedSz);
+                else 
+                    WriteUInt64(FTell(), tmp + addedSz);
+            }
+            FSkip(varSize);
+        }
+    }
+
+    //Inserts a new clip Key when increasing ChildMembershipCount in [PropInfo]:
+    void InsertClipKey(uint64 &ch, string s) {
+        local int newKeys = Atoi(s) - ch;
+        local int insertPt, clipStart, clipEnd;
+        local int z; 
+        if (newKeys > 0 && !exists(parentof(parentof(ch)).ChildProp)) {
+            local int ii, jj, kk;
+            while(exists(Elements.Element[ii])) {
+                jj=0;
+                while(exists(Elements.Element[ii].Clip.Clip[jj])) {
+                    if (startof(Elements.Element[ii].Clip.Clip[jj]) < startof(ch) && 
+                    startof(Elements.Element[ii].Clip.Clip[jj]) + sizeof(Elements.Element[ii].Clip.Clip[jj]) > startof(ch)) {
+                        clipStart = startof(Elements.Element[ii].Clip.Clip[jj]);
+                        clipEnd = startof(Elements.Element[ii].Clip.Clip[jj]) + sizeof(Elements.Element[ii].Clip.Clip[jj]);
+                        if (exists(Elements.Element[ii].Clip.Clip[jj].Keys)) {
+                            if (ch) {
+                                insertPt = startof(Elements.Element[ii].Clip.Clip[jj].Keys[parentof(ch).ChildStartIndex]) + keySize * ch;
+                            } else {
+                                insertPt = startof(Elements.Element[ii].Clip.Clip[jj].Names);
+                                parentof(ch).ChildStartIndex = Elements.Element[ii].Clip.Clip[jj].clipHeader.numKeys;
+                            }
+                        } else
+                            insertPt = startof(Elements.Element[ii].Clip.Clip[jj].Names);
+                        
+                        for (z=0; z<newKeys; z++) {
+                            FixOffsets(0, FileSize(), 0, FileSize(), insertPt, keySize, false);
+                            FixOffsets(clipStart, clipEnd, clipStart, clipEnd, insertPt, keySize, false);
+                            InsertBytes(insertPt, keySize, 0);
+                            insertPt += keySize;
+                            Elements.Element[ii].Clip.Clip[jj].clipHeader.numKeys++;
+                            ch++;
+                        }
+                        MessageBox( idOk, "Insert Data", "Press F5 to refresh the template and fix template results");
+                        return;
+                    }
+                    jj++;
+                }
+                ii++;
+            }            
+        } else 
+            ch = Atoi(s);
+    }
+
+typedef struct {
+    if (Version != 486) {
+        uint32 nodeCount, propCount;
+        float Start_Frame, End_Frame;
+        struct rGUID GUIDs[2];
+        FSkip(8); 
+    } else {
+        ushort nodeCount;
+        ushort propCount;
+        uint nodeType : 8;
+        uint padding : 24 <hidden=true>;
+    }
+    uint64 hash; 
+    uint64 nameOffset, nameOffset, firstPropIdx;
+    if (Version == 85) 
+        uint64 firstPropIdx;
+    
+    pos = FTell();
+    if (Version == 99) {
+        FSeek(clipHeader.unicodeNamesOffs + start + nameOffset[0] * 2);
+        wstring name;
+    } else if (Version == 486) {
+        FSeek(clipHeader.unicodeNamesOffs + start + nameOffset[0] * 2);
+        wstring name;
+    } else {
+        FSeek(clipHeader.namesOffsExtra[1] + start + nameOffset[0]);
+        string name;
+    }
+    FSeek(pos);
+} CTRACKS <read=ReadCTRACKS>;
+    string ReadCTRACKS (CTRACKS &input) { return input.name; }
+    
+
+local int propSize <hidden=true> = 112;
+local int keySize <hidden=true> = 40;
+
+typedef struct {
+    local uint start <hidden=true>;
+    if (Version == 486) {
+        propSize = 72;
+        keySize = 32;
+    } else if (Version==60) {
+        propSize = 120;
+    } else if (Version==99) {
+        keySize = 32;
+    }
+    
+    struct {
+        struct rGUID Guid;
+        FSkip(8);
+        struct StringRead Name(-1, 0, 0, 0, 0);
+        FSkip(8);
+        uint32 Magic;
+        uint32 version; 
+        float NumFrames; 
+        uint32 numNodes, numProperties, numKeys;
+        start = startof(Magic);
+        if (Version != 99 && Version != 486)
+            rGUID Guid;
+        
+        uint64 clipDataOffs, propertiesOffs;
+        uint64 keysOffs;
+        uint64 namesOffs;
+        
+        if (Version == 85)
+            uint64 namesOffs2;
+        
+        if (Version == 60) 
+            uint64 namesOffsExtra[5];
+        else 
+            uint64 namesOffsExtra[4];
+        
+        uint64 unicodeNamesOffs;
+        uint64 endClipStructsOffs;
+        
+    } clipHeader <name="Header">;
+
+    FSeek(clipHeader.clipDataOffs + start);
+    if (clipHeader.numNodes > 0) {
+        struct {
+            CTRACKS cTrack[clipHeader.numNodes] <optimize=false>;
+        } cTracks <name="Tracks">;
+    }
+
+    FSeek(clipHeader.propertiesOffs + start);
+    if (clipHeader.numProperties > 0) {
+        struct {
+            struct PROPERTY Property[clipHeader.numProperties] <optimize=false>;
+        } Properties;
+    }
+    
+    if (Version == 99) 
+        FSeek(clipHeader.keysOffs + start);
+    else 
+        FSeek(clipHeader.keysOffs + start);
+    
+    if (clipHeader.numKeys > 0)
+        struct clipKey Keys[clipHeader.numKeys] <optimize=true>;
+
+    if (clipHeader.namesOffsExtra[1] - clipHeader.namesOffs > 0) {
+        FSeek(clipHeader.namesOffs+start);
+        float Unknown_Floats[(clipHeader.namesOffsExtra[1] - clipHeader.namesOffs) / 4];
+    }
+    
+    if (clipHeader.namesOffsExtra[1] < clipHeader.unicodeNamesOffs) {
+        FSeek(clipHeader.namesOffsExtra[1] + start);
+        struct {
+            for (k = 0; k < clipHeader.numProperties + clipHeader.numNodes; k++) {
+                struct StringRead Name(FTell(), 0, 1, 1, 0);
+            }
+        } Names;
+    }
+    
+    FSeek(clipHeader.unicodeNamesOffs + start);
+    struct {
+        for (k = 0; k < clipHeader.numProperties + clipHeader.numNodes; k++) {
+            struct StringRead Name(FTell(), 0, 1, 0, 0);
+        }
+    } NamesUnicode <name="Names (Unicode)">;
+    
+    
+    local uint pos <hidden=true> = FTell();
+    
+    FSeek(clipHeader.propertiesOffs + start);
+    
+    if (clipHeader.numNodes && clipHeader.numProperties)
+        struct {
+            for (k=0; k<clipHeader.numNodes; k++) {
+                if (cTracks.cTrack[k].propCount > 0) {
+                    FSeek(clipHeader.propertiesOffs + start + (cTracks.cTrack[k].firstPropIdx * propSize));
+                    struct PSTRUCT{
+                        local int p <hidden=true>;
+                        local string name<hidden=true>  = cTracks.cTrack[k].name;
+                        for (p=0; p<cTracks.cTrack[k].propCount; p++)
+                            PROPERTY Property <optimize=false>;
+                    } cTrack <name=ReadPSTRUCT>;
+                }
+            }
+        } Sorted_Data <name="Sorted Data (Edit Here)">;
+    FSeek(pos);
+    
+} CLIP_ENTRY <name="Clip Entry", read=ReadCLIP_ENTRY>;
+
+    wstring ReadCLIP_ENTRY(CLIP_ENTRY &c) {
+        local wstring s;
+        if (exists(c.clipHeader.Name))
+            s = c.clipHeader.Name.String;
+        else if (exists(c.cTracks.cTrack[1].name))
+            s = c.cTracks.cTrack[1].name;
+        if (exists(c.Sorted_Data))
+            s = "*"+s;
+        return s;
+    }
+
+    string ReadPSTRUCT(PSTRUCT &input) { return input.name; }
+
+typedef struct keys (uint32 keyCount, uint32 flags, uint64 frameDataOffs) {
+    switch (flags >> 20)
+    {
+        case 2:
+            ubyte frameIndex[keyCount];
+            break;
+        
+        case 4:
+            int16 frameIndex[keyCount];
+            break;
+
+        case 5:
+            int32 frameIndex[keyCount];
+            break;
+
+        default:
+            break;
+    }
+};
+
+typedef struct {
+    uint64 count;
+    local int idx <hidden=true> = i;
+    if (count) {
+        for (j=0; j<count; j++) {
+            if (idx==1)
+                struct hAttribute {
+                    struct StringRead Path(-1, 0, 0, 0, 0); 
+                    struct StringRead Path(-1, 0, 0, 1, 0);
+                    struct ATTRIBUTE Attribute;  
+                    FSeek(startof(this)+40);
+                } HeaderAttribute <name=NamehAttribute, read=ReadhAttribute>; 
+            else
+                struct StringRead Path(-1, 0, 0, 0, 0);  
+        }
+    }
+} gPath <name=ReadgPathName, read=ReadgPath>;
+
+    string ReadhAttribute(hAttribute &input) { return input.Path[0].String; } 
+
+    string NamehAttribute(hAttribute &input) { return input.Path[1].String; } 
+
+
+//FILE START
+SetForeColor(cGreen);
+
+BLANK UniqueWriter <name=ReadUniqueWriterName, read=ReadUniqueWriter, write=MakeUnique>;
+
+FSkip(-1);
+
+struct {
+    uint guiVersion;
+    uint magic;
+    uint64 offsetsStartOffset; 
+    uint64 endOffs[4]; 
+    if (guiVersion > 430000)
+        uint64 ukn;
+    FSeek(offsetsStartOffset);
+    uint64 offsetsStart; 
+    uint64 viewOffset; 
+    uint64 numOffs;
+    uint64 offset[numOffs];
+    version = guiVersion;
+
+    
+    if (version == 180014) //RE7
+        Version = 60;
+    else if (version == 340020) //RE3
+        Version = 99;
+    else if (version  >= 400022) //RE8 and MHRise
+        Version = 486; 
+} HEADER <name="Header">;
+
+FSeek(HEADER.endOffs[0]);
+if (version < 430000)
+    struct {
+        for (i=0; i<4; i++){
+            FSeek(HEADER.endOffs[i]);
+            if (ReadInt() > 0) {
+                struct gPath HeaderSection <open=true>;
+                if (i==3)
+                    { BLANK blank; FSkip(-1); }
+            } else 
+                struct gPath HeaderSection;
+        }
+    } Paths <name="Paths & Attributes">;
+
+    string ReadgPath(gPath &p) { 
+        if (p.count && exists(p.Path.String))
+            return p.Path.String; 
+        return "";
+    }
+    string ReadgPathName(gPath &p) { 
+        switch (p.idx) {
+            case 0: return "Unknown";
+            case 1: return "Attributes";
+            case 2: return "GUI Files";
+            case 3: return "Resources";
+            default: return "";
+        }
+    }
+    
+FSeek(HEADER.offset[0]);
+struct {
+    for (i=0; i<HEADER.numOffs; i++){
+        FSeek(HEADER.offset[i]);
+        ELEMENT Element;
+    }
+} Elements <name="Elements">;
+
+string BlankElem(ELEMENT &e) { return " "; }
+
+string ReadELEMENTName(ELEMENT &e) { return e.ElementInfo.className; }
+
+FSeek(HEADER.viewOffset);
+struct SUBELEMENT View <name="SubElement View">;
+
+void displayElement(uint idx) {
+    FSeek(startof(Elements.Element[idx]));
+    struct NODE {
+        local ushort c <hidden=true>, se <hidden=true>;
+        struct ELEMENT Element <name=ReadELEMENTName, read=BlankElem, open=true>;
+        for (se=0; se<Element.ElementInfo.subElementCount; se++) {
+            for (c=0; c<HEADER.numOffs; c++) {
+                if (Element.SubElement[se].SubElementInfo.Name.String == Elements.Element[c].ElementInfo.Name) {
+                    displayElement(c);
+                    if (Element.ElementInfo.subElementCount == 1)
+                        { FSkip(-1); BLANK blank; }
+                }
+            }
+        }
+        FSeek(startof(Element) + sizeof(Element));
+    } Child <size=48, read=ReadNODE, name=ReadNODEName>;
+}
+
+string ReadNODE(NODE &n) {
+    local ushort m;
+    for (m=0; m<HEADER.numOffs; m++)
+        if (startof(Elements.Element[m]) == startof(n))
+            return Elements.Element[m].ElementInfo.Name;
+    return "";
+}
+
+string ReadNODEName(NODE &n) {
+    if (exists(n.Element))
+        return "Child " + n.Element.ElementInfo.className;
+    return "";
+}
+
+FSeek(startof(Elements));
+struct {
+    displayElement(0);
+} Sorted <name="Sorted Data">;

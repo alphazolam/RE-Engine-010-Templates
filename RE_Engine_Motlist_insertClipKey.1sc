@@ -1,0 +1,175 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Script File
+//
+//      File: RE_Engine_Motlist_insertClipKey.1sc
+//   Authors: alphaZomega
+//   Version: 0.3
+//   Purpose: Adds a Key to the selected Property (in template results) in a mot's CLIP data
+//  Category: RE Engine
+//   History: October 6, 2022
+//------------------------------------------------
+
+local int h, m, mi, n, strt, p, x, z, temp, count, frameCount, padBytes;
+local int diff = keySize;
+local int cPos = GetSelStart() + GetSelSize();
+
+//If a key is selected, find parent property by location:
+while(GetSelSize()==keySize && exists(MOT[h])) {
+    n = 0; while(exists(MOT[h].CLIP) && exists(MOT[h].CLIP.Clip[n])) {
+        m = 0; while(exists(MOT[h].CLIP.Clip[n].Properties.Property[m])) {
+            x = 0; while(exists(MOT[h].CLIP.Clip[n].Properties.Property[m].Keys[x])) {
+                if (startof(MOT[h].CLIP.Clip[n].Properties.Property[m].Keys[x]) == GetSelStart()) {
+                    cPos = startof(MOT[h].CLIP.Clip[n].Properties.Property[m]) + sizeof(MOT[h].CLIP.Clip[n].Properties.Property[m]);
+                    h = 9999, n = 9999, m = 9999, x = 9999; //break all
+                } x++;
+            } m++;
+        } n++;
+    } h++;
+}
+
+
+
+local int fileWasChanged;
+FSeek(cPos);
+
+int checkProp(PROPERTY &prop) {
+    //Printf(prop.FunctionName + "\n");
+    //Printf("%u, %u, %u, %u, %u, %u, %u \n", h, n, m-1, p, startof(prop), cPos, startof(prop) + propSize) ;
+    
+    switch (prop.PropInfo.DataType) {
+        case PropertyType_NativeArray:
+        case PropertyType_Nullable:
+        case PropertyType_NativeClass:
+        case PropertyType_Vec4:
+        case PropertyType_Vec3:
+        case PropertyType_Vec2:
+        case PropertyType_Float4:
+        case PropertyType_Quaternion:
+        case PropertyType_OBB:
+        case PropertyType_Mat4:
+            return false;
+        default:
+            break;
+    }
+    
+    if (startof(prop) <= cPos && cPos <= startof(prop) + propSize) {
+        cPos = startof(MOT[h].CLIP.Clip[n].Keys) + diff * (prop.PropInfo.ChildStartIndex + prop.PropInfo.ChildMembershipCount);
+        if (prop.PropInfo.ChildMembershipCount > 0) { 
+            for (x=m; x<MOT[h].CLIP.Clip[n].clipHeader.numProperties; x++) { 
+                if (exists(MOT[h].CLIP.Clip[n].Properties.Property[x].Keys) 
+                && MOT[h].CLIP.Clip[n].Properties.Property[x].PropInfo.ChildStartIndex > prop.PropInfo.ChildStartIndex) { 
+                    MOT[h].CLIP.Clip[n].Properties.Property[x].PropInfo.ChildStartIndex++;
+                }
+            }
+        } else { 
+            prop.PropInfo.ChildStartIndex = MOT[h].CLIP.Clip[n].clipHeader.numKeys;
+        }
+        
+        fileWasChanged = TRUE;
+        
+        prop.PropInfo.ChildMembershipCount++;
+        count = prop.PropInfo.ChildMembershipCount;
+        
+        if (prop.PropInfo.ValueA == -1.0) {
+            prop.PropInfo.ValueA = 0;
+            prop.PropInfo.ValueB = MOT[h].MOT_HEADER.frameCount;
+        }
+        
+        return true;
+    }
+    return false;
+}
+
+for (h=0; h<motCounter; h++) {
+    if ( startof(MOT[h]) <= cPos && cPos <= (startof(MOT[h]) + sizeof(MOT[h])) ) {
+        for (n=0; n<MOT[h].MOT_HEADER.clipCount; n++) {
+            //Printf("%u %u %u %u %u\n", h, n, startof(MOT[h].CLIP.Clip[n]), cPos, startof(MOT[h].CLIP.Clip[n]) + sizeof(MOT[h].CLIP.Clip[n]) );
+            if (startof(MOT[h].CLIP.Clip[n]) < cPos && cPos < startof(MOT[h].CLIP.Clip[n]) + sizeof(MOT[h].CLIP.Clip[n])  ) {
+                if (startof(MOT[h].CLIP.Clip[n].Properties) <= cPos && cPos <= startof(MOT[h]) + MOT[h].CLIP.Clip[n].clipHeader.keysOffs) {
+                    for (m=0; m<MOT[h].CLIP.Clip[n].clipHeader.numProperties; m++) { 
+                        if (checkProp(MOT[h].CLIP.Clip[n].Properties.Property[m]) == true)
+                            break;
+                    }
+                }
+                frameCount = MOT[h].MOT_HEADER.frameCount;
+                if (count <= 1) {
+                    cPos = startof(MOT[h].CLIP.Clip[n].Keys) + MOT[h].CLIP.Clip[n].clipHeader.numKeys * diff;
+                }
+                break;
+            }
+        }
+        if (!fileWasChanged)
+            return;
+        local uint32 start = cPos - startof(MOT[h]);
+        local uint32 end = MOT[h].MOT_HEADER.Offs2;
+        if (MOT[h].MOT_HEADER.Offs2 == 0)
+            end = MOT[h].MOT_HEADER.namesOffs;
+        
+        FSeek(startof(MOT[h]));
+        Printf("Searching from %u for values greater than %u and less than %u\n", FTell(), start, end);
+        while(FTell() < startof(MOT[h]) + end) {
+            temp = ReadUInt64(FTell());
+            if (temp >= start && temp <= end) { 
+                Printf("Changing offset at %u from %u to %u\n", FTell(), temp, temp+diff);
+                WriteUInt64(FTell(), temp + diff);
+            }
+            FSkip(8);
+        }
+        
+        local uint tmp, endOfUnicodeStrings = 0;
+        if (MOT[h].CLIP.Clip[n].Properties.Property[m].PropInfo.DataType == 13) { //assign location for new string of Str16 key
+            endOfUnicodeStrings = startof(MOT[h].CLIP.Clip[n].NamesUnicode) + MOT[h].CLIP.Clip[n].lastUnicodeNameOffs*2;
+            while(tmp!=2) {
+                endOfUnicodeStrings = endOfUnicodeStrings + tmp;
+                tmp = sizeof(ReadWString(endOfUnicodeStrings));
+            }
+            endOfUnicodeStrings = (endOfUnicodeStrings - startof(MOT[h].CLIP.Clip[n].NamesUnicode)) / 2;
+        }
+        
+        local uint nextMotSt = findNextMot(cPos);
+        while(nextMotSt != FileSize() && (nextMotSt+diff+padBytes) % 16 != 0) 
+            padBytes++;
+        if (padBytes) {
+            Printf("Inserting %u padding bytes at %u\n", padBytes, nextMotSt);
+            InsertBytes(nextMotSt, padBytes, 0);
+        }
+        
+        if (endOfUnicodeStrings)
+            WriteUByte(startof(MOT[h].CLIP.Clip[n].NamesUnicode)+endOfUnicodeStrings*2, 0x3f);
+
+        Printf("Inserting %u bytes at %u\n", diff, cPos);
+        InsertBytes(cPos, diff, 0);
+        MOT[h].CLIP.Clip[n].clipHeader.numKeys++;
+        
+        local char buffer[diff];
+        ReadBytes(buffer, cPos - diff, diff);
+        WriteBytes(buffer, cPos, diff);
+        if (endOfUnicodeStrings)
+            WriteUInt64(cPos+16, endOfUnicodeStrings);
+        
+        if (count > 1) {
+            WriteFloat(cPos, MOT[h].CLIP.Clip[n].Properties.Property[m].PropInfo.ValueB);//frameCount);
+        } else {
+            WriteFloat(cPos, 0);
+            WriteUInt(cPos+8, 1);
+        } 
+        break;
+    }
+}
+
+if (exists(HEADER.padding) && fileWasChanged) { //if real header exists (is a motlist and not a loose mot)
+    if (cPos < HEADER.colOffs)
+        HEADER.colOffs += diff + padBytes;
+    local uint kk; 
+    Printf("Padbytes %u\n", padBytes);
+    while(exists(HEADER.Pointers[kk])) {
+        if (padBytes && HEADER.Pointers[kk].Address >= nextMotSt)
+            HEADER.Pointers[kk].Address += padBytes;
+        if (HEADER.Pointers[kk].Address > cPos)
+            HEADER.Pointers[kk].Address += diff;
+        
+        kk++;
+    } 
+}
+
+//RunTemplate("", 1);

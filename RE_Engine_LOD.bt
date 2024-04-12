@@ -1,0 +1,26 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_lod.bt
+//   Authors: alphaZomega
+//   Version: 1.0
+//   Purpose: Parse lod.3 files
+//  Category: RE Engine
+// File Mask: *.lod.3
+//  ID Bytes: 
+//   History: Dec 2, 2022
+//------------------------------------------------
+
+struct {
+    uint magic;
+    uint ukn0;
+    uint numLODSettings;
+} header;
+
+struct {
+    uint ukn0;
+    uint ukn1;
+    uint hash;
+    float setting[29];
+} LODSettingsGroup[header.numLODSettings+1];
+

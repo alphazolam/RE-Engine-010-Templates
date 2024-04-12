@@ -1,0 +1,38 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Script File
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+//   History: 
+//------------------------------------------------
+
+local uint ii, jj, kk, current, newOffs, counter;
+
+int findInArray(uint offs) {
+    for (kk = 0; kk < 1000; kk++){
+        if (rOffsArr[kk] == 0) {
+            rOffsArr[kk] = offs;
+            counter = kk + 1;
+            return -1;
+        }
+        if (rOffsArr[kk] == offs)
+            return kk;
+    }
+}
+
+for(ii = 0; ii < Header.mtrlCount; ii++){
+    for (jj = 0; jj < Header.mtrls.mtrl[ii].texCount; jj++){
+        current = findInArray(texHdrs.mtrl[ii].TEX[jj].Path.pos);
+        if (current != -1) { //found dupe
+            newOffs = FindFirst(texHdrs.mtrl[ii].TEX[jj].Path.st, 1, 0, 0, 0, 1, current + 2, FileSize());
+            if (newOffs != -1) {
+                rOffsArr[counter] = newOffs;
+                counter++;
+                texHdrs.mtrl[ii].TEX[jj].Path.pos = newOffs;
+            }
+        }
+    }
+}

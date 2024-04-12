@@ -1,0 +1,83 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: DMC5_motbank.bt
+//   Authors: alphaZomega
+//   Version: 0.1
+//   Purpose: 
+//  Category: RE Engine
+// File Mask: *.motbank.*
+//  ID Bytes: [+4] 6D 62 6E 6B
+//   History: 
+//------------------------------------------------
+uint version;
+uint magic;
+FSkip(8);
+uint64 motlistsOffset;
+uint64 uvarOffset;
+if (version == 3) 
+    uint64 ukn;
+struct MotlistCount {
+    int motlistCount;
+} motlistCount <read=ReadMotlistCount, write=WriteMotlistCount>;
+
+if (uvarOffset) {
+    FSeek(uvarOffset);
+    wstring uvarPath;
+}
+
+FSeek(motlistsOffset);
+
+//if (version == 3)
+//    FSkip(8);
+struct MOTLISTOFFSET {
+    uint64 offset;
+    if (version==3)
+        int32 BankID, uknInt;
+    else
+        int64 BankID;
+    uint64 ukn;
+    FSeek(offset);
+    wstring motlist;
+    FSeek(startof(this)+24);
+} motlistOffset[motlistCount.motlistCount] <optimize=false, read=ReadMOTLISTOFFSET, name=ReadMOTLISTOFFSETName>;
+
+string ReadMOTLISTOFFSET(MOTLISTOFFSET &m) {
+    return m.motlist;
+}
+
+string ReadMOTLISTOFFSETName(MOTLISTOFFSET &m) {
+    string s;
+    SPrintf(s, "BankID: %i ", m.BankID);
+    return s;
+}
+
+string ReadMotlistCount(MotlistCount &m) {
+    local string s;
+    SPrintf(s, "%i", m.motlistCount);
+    return s;
+}
+
+void WriteMotlistCount(MotlistCount &m, string s) {
+    local int c = m.motlistCount;
+    local int i;
+    local int newCount = Atoi(s);
+    local int insertPt;
+    local wstring newMotlist;
+    if ((newCount - c) > 0) {
+        while(exists(motlistOffset[i])) {
+            motlistOffset[i].offset += 24 * (newCount - c);
+            i++;
+        }
+        insertPt = startof(motlistOffset[i-1]) + sizeof(motlistOffset[i-1]);
+        InsertBytes(insertPt, 24 * (newCount - c), 0);
+        for (i=0; i<newCount - c ; i++) {
+            WriteUInt64(insertPt + i * 24, FileSize());
+            newMotlist = InputString("Insert Motlist", "What motlist do you want to insert?", "");
+            WriteWString(FileSize(), newMotlist);
+            WriteUShort(FileSize(), 0);
+        }
+        MessageBox( idOk, "Insert Data", "Press F5 to refresh the template and fix template results");
+    }
+    m.motlistCount = Atoi(s);
+}

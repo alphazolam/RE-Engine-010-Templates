@@ -1,0 +1,55 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+typedef struct {
+    while (!FEof()) {
+        if (FileSize()-FTell() < 4) 
+            break;
+        else if (ReadUByte(FTell()+3) > 57 && ReadUByte(FTell()+3) < 208)
+            float Float;
+        else
+            uint32 Int;
+    }
+} Generic_Parser;
+Generic_Parser PreParse;
+FSeek(0);
+struct {
+    uint32 magic;
+    uint ukn1, ukn2, ukn3;
+    uint64 a;
+    uint64 b;
+    uint64 c;
+    uint64 d;
+    uint64 e;
+    uint64 f;
+    uint64 g;
+    uint64 padding[3];
+    uint64 h;
+    uint64 i;
+    uint64 padding2[3];
+    uint64 j;
+    uint32 k;
+    uint32 l;   
+    uint64 m; 
+} HEADER;
+
+struct {
+    float flt1, flt2;
+    float flt3, flt4;
+    uint32 ukn3, pad1;
+    uint64 pad2;
+} UV[HEADER.ukn3];
+
+FSeek(HEADER.e);
+struct {
+    wstring tex;
+} String[HEADER.h] <optimize=false>;

@@ -1,0 +1,625 @@
+//------------------------------------------------
+//--- 010 Editor v9.0 Binary Template
+//
+//   File:      RE_Engine_MDF.bt
+//   Authors:   Che, Darkness, alphaZomega
+//   Version:   June 6, 2023
+//   Purpose:   Editing of RE Engine MDF material files
+//   Category:  
+//   File Mask: *
+//   ID Bytes:  4D 44 46 00 // MDF 
+//   History:   
+//------------------------------------------------
+SetForeColor(cGreen);
+LittleEndian();
+local uint64 i <hidden=true>, j <hidden=true>,\ 
+             k <hidden=true>, pos <hidden=true>;
+local int matchSize <hidden=true>, Version <hidden=true> = 10;
+local string fName <hidden=true> = GetFileName();
+local int numVersion = Atoi(SubStr(FileNameGetExtension(fName), 1, -1));
+local int isSF6 = (numVersion==30 || numVersion==31 || numVersion == 32);
+local ubyte hasUknStructs <hidden=true>;
+/* ----DEFINITIONS---- */
+
+typedef enum <uint>
+{
+  Standard = 0x0,
+  Decal = 0x1,
+  DecalWithMetallic = 0x2,
+  DecalNRMR = 0x3,
+  Transparent = 0x4,
+  Distortion = 0x5,
+  PrimitiveMesh = 0x6,
+  PrimitiveSolidMesh = 0x7,
+  Water = 0x8,
+  SpeedTree = 0x9,
+  GUI = 0xA,
+  GUIMesh = 0xB,
+  GUIMeshTransparent = 0xC,
+  ExpensiveTransparent = 0xD,
+  Forward = 0xE,
+  RenderTarget = 0xF,
+  PostProcess = 0x10,
+  PrimitiveMaterial = 0x11,
+  PrimitiveSolidMaterial = 0x12,
+  SpineMaterial = 0x13,
+  Max = 0x14
+} MaterialShadingType;
+
+typedef struct {
+	ubyte BaseTwoSideEnable : 1;
+	ubyte BaseAlphaTestEnable : 1;
+	ubyte ShadowCastDisable : 1;
+	ubyte VertexShaderUsed : 1;
+	ubyte EmissiveUsed : 1;
+	ubyte TessellationEnable : 1;
+	ubyte EnableIgnoreDepth : 1;
+	ubyte AlphaMaskUsed : 1;
+	ubyte ForcedTwoSideEnable : 1;
+	ubyte TwoSideEnable : 1;
+	ubyte TessFactor : 6;
+	ubyte PhongFactor;
+	ubyte RoughTransparentEnable : 1;
+	ubyte ForcedAlphaTestEnable : 1;
+	ubyte AlphaTestEnable : 1;
+	ubyte SSSProfileUsed : 1;
+	ubyte EnableStencilPriority : 1;
+	ubyte RequireDualQuaternion : 1;
+	ubyte PixelDepthOffsetUsed : 1;
+	ubyte NoRayTracing : 1;
+} ALPHAFLAG;
+
+uint32 fmix32(uint32 h){
+  h ^= h >> 16;
+  h *= 0x85ebca6b;
+  h ^= h >> 13;
+  h *= 0xc2b2ae35;
+  h ^= h >> 16;
+
+  return h;
+}
+
+int find(wstring str, wstring term) { return (RegExSearch(str, term, matchSize, 0)); }
+
+int findS(string str, string term) { return (RegExSearch(str, term, matchSize, 0)); }
+
+uint32 mmh3 (byte key[], uint32 length , uint32 seed){
+    local uint64 block_start<hidden=true>;
+    local const uint nBlocks = length / 4;
+    local uint32 h1 = seed;
+    
+    local const uint32 c1 = 0xcc9e2d51;
+    local const uint32 c2 = 0x1b873593;
+
+    local uint32 k1;
+
+    local byte salam = 32;
+    for(block_start = 0; block_start < nBlocks * 4; block_start+= 4){
+        k1 = (uint32)key[block_start + 3] << 24 | \
+             (uint32)key[block_start + 2] << 16 | \
+             (uint32)key[block_start + 1] << 8 | \
+             (uint32)key[block_start + 0];
+
+        k1 = (c1 * k1) & 0xFFFFFFFF;
+        k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
+        k1 = (c2 * k1) & 0xFFFFFFFF;
+
+        h1 ^= k1;
+        h1 = (h1 << 13 | h1 >> 19) & 0xFFFFFFFF;
+        h1 = (h1 * 5 + 0xe6546b64) & 0xFFFFFFFF;
+    }
+
+    local uint32 tail_index = nBlocks * 4;
+    k1 = 0;
+    local uint32 tail_size = length & 3;
+
+    if(tail_size >= 3)
+        k1 ^= (uint32)key[tail_index + 2] << 16;
+    if(tail_size >= 2)
+        k1 ^= (uint32)key[tail_index + 1] << 8;
+    if(tail_size >= 1)
+        k1 ^= (uint32)key[tail_index + 0];
+
+    if(tail_size > 0){
+        k1 = (k1 * c1) & 0xFFFFFFFF;
+        k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
+        k1 = (k1 * c2) & 0xFFFFFFFF;
+        h1 ^= k1;
+    }
+
+    return fmix32(h1 ^ length);
+}
+
+uint32 hashASC(string key){
+    local uint64 it<hidden=true>;
+    local const uint length = Strlen(key);
+    local byte key_array[length];
+    for(it = 0; it < length; it++){
+        key_array[it] = key[it];
+    }
+
+    return mmh3(key_array, length, 0xFFFFFFFF);
+}
+
+uint32 hash_wide(string key){
+    local uint64 it<hidden=true>;
+    local const uint length = Strlen(key) * 2;
+    local byte key_array[length];
+    for(it = 0; it < length; it += 2){
+        key_array[it] = key[it / 2];
+        key_array[it + 1] = 0;
+    }
+
+    return 0; //mmh3(key_array, length, 0xFFFFFFFF);
+}
+
+uint32 hashWs(wstring key){
+    return hash_wide((string)key);
+}
+
+uint32 hashASCWs(wstring key){
+    return hashASC((string)key);
+}
+
+void Fix_Off(uint64 off, int64 sz){
+    uint64 i, j;
+    for(i = 0; i < Header.mtrlCount; i++){
+        if(Header.mtrls.mtrl[i].mtrlNameOffs > off)      Header.mtrls.mtrl[i].mtrlNameOffs      += sz;
+        if(Header.mtrls.mtrl[i].propHdrsOffs > off)      Header.mtrls.mtrl[i].propHdrsOffs      += sz;
+        if(Header.mtrls.mtrl[i].texHdrOffs > off)        Header.mtrls.mtrl[i].texHdrOffs        += sz;
+        if(Header.mtrls.mtrl[i].propsOffs > off)         Header.mtrls.mtrl[i].propsOffs         += sz;
+        if(Header.mtrls.mtrl[i].mmtrPath_Offs > off)     Header.mtrls.mtrl[i].mmtrPath_Offs     += sz;
+        for (j = 0; j < Header.mtrls.mtrl[i].texCount; j++){
+            if(texHdrs.mtrl[i].TEX[j].typeOffs > off)    texHdrs.mtrl[i].TEX[j].typeOffs   += sz;
+            if(texHdrs.mtrl[i].TEX[j].pathOffs > off)    texHdrs.mtrl[i].TEX[j].pathOffs   += sz;
+        }
+        for (j = 0; j < Header.mtrls.mtrl[i].propCount; j++){
+            if(propHdrs.mtrl[i].prop[j].propNameOffs > off)  propHdrs.mtrl[i].prop[j].propNameOffs += sz;
+        }
+        if (exists(TexIDs)) {
+            if(Header.mtrls.mtrl[i].uknStructsOffs > off)     Header.mtrls.mtrl[i].uknStructsOffs     += sz;
+            for (j = 0; j < 4; j++)
+                if(exists(TexIDs.MatTexIDs[i].offsets) && TexIDs.MatTexIDs[i].offsets[j] > off)  
+                    TexIDs.MatTexIDs[i].offsets[j] += sz;
+        }
+    }
+}
+
+string Lower(string s) {
+    local string s2 = s;
+    for (k=0; k < sizeof(s); k++)
+        s2[k] = ToLower(s[k]);
+    return s2;
+}
+
+int doesExist(string str, string term) {
+    return (RegExSearch(str, term, matchSize, 0) != -1);
+}
+
+uint getMaxSize(uint start) {
+	local uint pos = FTell();
+	FSeek(start + sizeof(ReadWString(start)));
+	while (ReadUByte(FTell()) == 0) FSkip(1);
+	local uint size = FTell() - start;
+	FSeek(pos);
+	return size;
+}
+
+//String type
+    typedef struct{
+        local uint64 pos <hidden=true> = FTell();
+        wstring st <name="String", open=suppress>;
+    } mdf_str_t<read=mdf_st_read, write=mdf_st_write, open=suppress>;
+
+    string mdf_st_read(mdf_str_t& f){
+        string s;
+        SPrintf(s, "%s", f.st);
+        return s;
+    }
+
+    void mdf_st_write(mdf_str_t &input, wstring s){
+        local int64 size = (Strlen(s) + 1) * 2;
+        if(!Strlen(s)) size = 0;
+        local int64 bSize = (Strlen(input.st) + 1) * 2;
+        if(bSize){
+            Fix_Off(input.pos, size - bSize);
+            DeleteBytes(input.pos, bSize);
+        }
+        if(size){
+            InsertBytes(input.pos, size, 0x00);
+            WriteWString(input.pos, (wstring)s);
+        }
+		Printf("Refresh the template with F5 to fix template results\n");
+    };
+
+//Properties
+    typedef struct {
+        local wstring type <open=suppress, hidden=true> = ReadWString(propHdrs.mtrl[i].prop[j].propNameOffs, -1);
+        FSeek(Header.mtrls.mtrl[i].propsOffs+propHdrs.mtrl[i].prop[j].propOffs);
+
+        local uint64 typeHash <hidden=true> = propHdrs.mtrl[i].prop[j].nameUIF16Hash;
+        if (propHdrs.mtrl[i].prop[j].numParams == 4 && (doesExist(Lower((string)type), "color") && !doesExist(Lower((string)type), "rate")) || 
+            typeHash == 0x3A130D0A || typeHash == 0x2FD71A4B ||
+            typeHash == 0x114B33F4 || typeHash == 0xF1BACDAF ||
+            typeHash == 0x033CB166 || typeHash == 0x7D0FA086 ||
+            typeHash == 0x83EBFAB5 || typeHash == 0x77181233)
+        {   
+            local uint64 R <hidden=true> = ReadFloat(FTell()) * 255.0f + 0.5;
+            local uint64 G <hidden=true> = ReadFloat(FTell()+4) * 255.0f + 0.5;
+            local uint64 B <hidden=true> = ReadFloat(FTell()+8) * 255.0f + 0.5;
+            local uint64 A <hidden=true> = ReadFloat(FTell()+12) * 255.0f + 0.5;
+            SetBackColor((B<<16) | (G<<8) | (R));
+            SetForeColor(R);
+            float Value <name="Red">;
+            SetForeColor(G<<8);
+            float Value <name="Green">;
+            SetForeColor(B<<16);
+            float Value <name="Blue">;
+            SetForeColor((A<<16) + (A<<8) + A);
+            float Value <name="Alpha">;
+            SetForeColor(cNone);
+            SetBackColor(cNone);
+        }
+        else
+            for (k = 0; k < propHdrs.mtrl[i].prop[j].numParams; k++)
+                float Value <optimize=false>;
+    } mtrlProp <name=ReadPropName, read=ReadPropValue, write=writePropValue>;
+
+    string ReadPropValue( mtrlProp& ref ) {
+        if (exists(ref.Value)) {
+            string s;
+            SPrintf(s, "%g", ref.Value[0]);
+            if (exists(ref.Value[3]))
+                SPrintf(s, "%s, %g, %g, %g", s, ref.Value[1], ref.Value[2], ref.Value[3]);
+            return s;
+        }
+        return "";
+    }
+
+    void writePropValue( mtrlProp& ref, string s ){
+        if (exists(ref.Value)) {
+            if (exists(ref.Value[3])) {
+                if (doesExist(s, ","))
+                    SScanf(s, "%g, %g, %g, %g", ref.Value[0], ref.Value[1], ref.Value[2], ref.Value[3]);
+                else
+                    SScanf(s, "%g %g %g %g", ref.Value[0], ref.Value[1], ref.Value[2], ref.Value[3]);
+            } else
+                ref.Value = Atof(s);
+        }
+    }    
+
+    string ReadPropName( mtrlProp& ref ) {
+        if( exists(ref.type) )
+            return ref.type;
+        else
+            return "Type Not Found!";
+    }
+
+    //Material container
+    typedef struct {
+        local wstring mtrlName <hidden=true> = Header.mtrls.mtrl[i].mtrlName.st;
+    
+        for (j = 0; j < Header.mtrls.mtrl[i].propCount; j++)
+            mtrlProp Components <open=false>;
+    } props <name=ReadMtrlNameProps>;
+    
+    string ReadMtrlNameProps( props& ref ) {
+        if( exists(ref.mtrlName) )
+            return ref.mtrlName;
+        else
+            return "Name Not Found!";
+    }
+
+//Property headers
+    typedef struct {
+        uint64 propNameOffs <format=hex, name="Property Name Offset">; pos = FTell();
+        FSeek(propNameOffs);
+        mdf_str_t propName <name="Property Name">;
+        
+        FSeek(pos);
+        uint32 nameUIF16Hash <name="Name UTF-16 Hash">;
+        uint32 nameASCIIHash <name="Name ASCII Hash">;
+
+        if (numVersion >= 13)
+        {
+            uint32 propOffs <name="Property Data Offset">;
+            uint32 numParams <name="Parameter Count">;
+        }
+        else 
+        {
+            uint32 numParams <name="Parameter Count">;
+            uint32 propOffs <name="Property Data Offset">;
+        }
+    } propHdr <name=ReadPropHdrName, write=null>;
+
+    string ReadPropHdrName( propHdr& ref ) {
+        if( exists(ref.propName.st) )
+            return ref.propName.st;
+        else
+            return "Name Not Found!";
+    }
+
+//Material container
+    typedef struct {
+        local wstring mtrlName <hidden=true> = Header.mtrls.mtrl[i].mtrlName.st;
+
+        for (j = 0; j < Header.mtrls.mtrl[i].propCount; j++)
+            propHdr prop;
+    } mtrlPropsHdr <name=ReadMtrlNamePropsHdr>;
+
+    string ReadMtrlNamePropsHdr( mtrlPropsHdr& ref ) {
+        if( exists(ref.mtrlName) )
+            return ref.mtrlName;
+        else
+            return "Name Not Found!";
+    }
+
+//Textures
+    typedef struct {
+        uint64 typeOffs <format=hex, name="Texture Type Offset">;
+        uint32 texUTF16Hash <name="UTF-16 Texture Type Hash", open=suppress>;
+        uint32 texASCIIHash <name="ASCII Texture Type Hash", open=suppress>;
+        uint64 pathOffs <format=hex, name="Texture File Path Offset">;
+        if (numVersion >= 13) 
+            uint64 ukn <hidden=0>;
+        pos = FTell(); 
+        
+        FSeek( typeOffs );
+        mdf_str_t Type <name="Texture Type", open=suppress>; FSeek( pathOffs );
+        mdf_str_t Path <name="Texture File Path", open=suppress>;
+        FSeek( pos ); FSkip(-1);
+        byte blank <name=readblank,read=readblank>; 
+    } texHdr <name=ReadTexType,read=readTexPath, write=writeTexPath>;
+
+    string ReadTexType( texHdr& ref ) {
+        if( exists(ref.Type.st) )
+            return ref.Type.st;
+        else
+            return "Type Not Found!";
+    }
+
+    string readTexPath( texHdr& ref ){
+        return ReadWString(ref.pathOffs);
+    }
+    void writeTexPath( texHdr& ref, wstring s ){
+		local uint sz = getMaxSize(startof(ref.Path));
+        if (Atoi(s)) {
+            ref.pathOffs = Atoi(s);
+		} else if (sizeof(s)-2 > sz)
+        	mdf_st_write(ref.Path, s);
+		else
+			ref.Path.st = s;
+    }
+    
+//Material container
+    typedef struct {
+        local wstring mtrlName <hidden=true> = Header.mtrls.mtrl[i].mtrlName.st;
+
+        for (j = 0; j < Header.mtrls.mtrl[i].texCount; j++)
+            texHdr TEX;
+        FSkip(-1);
+        byte blank <name=readblank,read=readblank>;
+    } mtrlTex <name=ReadMtrlNameTex>;
+
+    string ReadMtrlNameTex( mtrlTex& ref ) {
+        if( exists(ref.mtrlName))
+            return ref.mtrlName;
+        else
+            return "Name Not Found!";
+    }
+
+//Material Headers
+    typedef struct {
+        uint64 mtrlNameOffs <format=hex, name="Material Name Offset">;
+        uint32 hash <name="Material Name Hash">;
+        if (numVersion == 6) //ReadUInt64(48) > FileSize() ||
+            uint uknRE7, uknRE7;
+        
+        uint32 sizeOfFloatStr <name="Properties Data Block Size">;
+        uint32 propCount <name="Property Count">;
+        uint32 texCount <name="Texture Count">; 
+        
+		if (numVersion >= 19 && numVersion < 100000)
+			FSkip(8);           
+        MaterialShadingType materialShadingType <name="Shader Type">;
+        
+        if (isSF6)
+            uint ukn;
+
+		enum <ubyte> {
+			Default = 144,
+			Single_Sided = 152,
+			Double_Sided = 153,
+			Single_Sided_with_Transparency = 154,
+			Double_Sided_with_Transparency = 155
+		} Alpha_Flag_Preset <format=binary>;
+
+		FSeek(startof(Alpha_Flag_Preset));
+        ALPHAFLAG Flags <format=binary, name="Flags">;
+        
+        if (isSF6) {
+            uint ukn1, ukn2;
+        }
+
+        uint64 propHdrsOffs <format=hex, name="Property Headers Offset">;             
+        uint64 texHdrOffs <format=hex, name="Tex Headers Offset">;
+		if (numVersion >= 19 && numVersion < 100000)
+			uint64 firstMtrlNameOffs <format=hex, name="First Material Name Offset">;
+
+        uint64 propsOffs <format=hex, name="Properties Data Block Offset">;
+        uint64 mmtrPath_Offs <format=hex, name="MasterMaterial File Path Offset">; 
+        
+        if (isSF6) {
+            uint64 uknStructsOffs;
+            if (!hasUknStructs && uknStructsOffs)
+                hasUknStructs = uknStructsOffs;
+        }
+        
+        pos = FTell(); 
+        FSeek( mtrlNameOffs[0] );
+        mdf_str_t mtrlName <write=WriteValueMtrlNameHash, open=suppress, name="Material Name">; FSeek(mmtrPath_Offs);
+        local uint64 Hash_From_Name <name="ASCII Hash (Generated):"> = hashWs(mtrlName.st);
+
+        mdf_str_t mmtrPath <open=suppress, name="Master Material File Path">;
+        FSeek( pos );
+        FSkip(-1); byte blank <name=readblank,read=readblank>;
+    } mtrlHdr <name=ReadMtrlNameHdr, read=ReadMtrlHdr, write=WriteMtrlHdr>;
+
+    string ReadMtrlNameHdr( mtrlHdr& ref ) {
+        if( exists(ref.mtrlName.st) )
+            return ref.mtrlName.st;
+        else
+            return "";
+    }
+    string ReadMtrlHdr( mtrlHdr& ref ) {
+        if( exists(ref.mmtrPath.st) )
+            return ref.mmtrPath.st;
+        else
+            return "";
+    }
+	void WriteMtrlHdr( mtrlHdr& ref, wstring s) {
+		mdf_st_write(ref.mmtrPath, s); 
+	}
+
+    string ReadValueMtrlNameHash( mdf_str_t& ref ) {
+        string hashString;
+        SPrintf(hashString, "%u", hashWs(ref));
+        return ref + " || ASCII Hash: " + hashString;
+
+    }
+    void WriteValueMtrlNameHash(mdf_str_t &ref, wstring s) {
+        parentof(ref).Hash_From_Name = hashWs(s);
+        parentof(ref).hash = hashWs(s);
+		mdf_st_write(ref, s);
+    }
+
+ubyte UniquePathWriter <name="Make Unique", read=ReadUniqueWriter, write=WriteUniqueWriter>; FSkip(-1);
+
+    string ReadUniqueWriter(ubyte &f) { return "      [Input here to make all tex paths unique]"; }
+
+    local uint counter <hidden=1>;
+    
+    local uint rOffsArr[1000] <hidden=1>;
+    
+    int findInArray(uint offs) {
+        local int lastFoundIdx = -1, kk;
+        for (kk = 0; kk < 1000; kk++){
+            if (rOffsArr[kk] == 0) { //reached end
+                counter = kk-1;
+                if (lastFoundIdx == -1) { //no dupes found
+                    rOffsArr[kk] = offs; //add it
+                    return -1;
+                } else
+                    return lastFoundIdx;
+            } else if (rOffsArr[kk] == offs) //found dupe
+                lastFoundIdx = kk;
+        }
+    }
+    
+    void WriteUniqueWriter(ubyte &f, string s) { 
+        local uint ii, jj, current, newOffs;
+        for(ii = 0; ii < Header.mtrlCount; ii++){
+            for (jj = 0; jj < Header.mtrls.mtrl[ii].texCount; jj++){
+                current = findInArray(texHdrs.mtrl[ii].TEX[jj].Path.pos);
+                if (current != -1) { //found dupe
+                    newOffs = FindFirst(texHdrs.mtrl[ii].TEX[jj].Path.st, 0, 0, 0, 0, 1, rOffsArr[counter] + 2, FileSize() - rOffsArr[counter] + 2, 24);
+                    if (newOffs != -1) {
+                        rOffsArr[counter+1] = newOffs;
+                        texHdrs.mtrl[ii].TEX[jj].pathOffs = newOffs;
+                    }
+                }
+            }
+        }
+        MessageBox( idOk, "Make Unique", "%sPress F5 to refresh the template and fix template results", "");
+    }
+
+/* ----START---- */
+struct {
+    char   id[4] <name="File ID", open=suppress>;
+    uint16 version;
+    uint16 mtrlCount <name="Material Count">;
+    uint64 reserved <hidden=true>;
+
+    struct {
+        for (i = 0; i < mtrlCount; i++)
+            mtrlHdr mtrl;
+    } mtrls <open=true, name="Materials">;
+    FSkip(-1); byte blank <name=readblank,read=readblank>;
+
+
+} Header <name="File Header">;
+    string readblank(byte &ref) { return " ";}
+
+/*if (isSF6 && 1)
+    Version = 13;
+else if (!isSF6 && ReadUInt(Header.mtrls.mtrl[0].propHdrsOffs + 16) == 0)
+    Version = 13;*/
+
+struct {
+    for (i = 0; i < Header.mtrlCount; i++)
+    {
+        FSeek( Header.mtrls.mtrl[i].texHdrOffs );
+        mtrlTex mtrl;
+    }
+} texHdrs <name="Textures">;
+
+struct {
+    for (i = 0; i < Header.mtrlCount; i++)
+    {
+        FSeek(Header.mtrls.mtrl[i].propHdrsOffs);
+        mtrlPropsHdr mtrl;
+    }
+} propHdrs <name="Material Properties Headers">;
+
+if (Header.mtrls.mtrl[0].propHdrsOffs)
+    FSeek(Header.mtrls.mtrl[0].propHdrsOffs);
+
+FSeek(Header.mtrls.mtrl[0].propsOffs);
+struct {
+    for (i = 0; i < Header.mtrlCount; i++)
+    {
+        FSeek(Header.mtrls.mtrl[i].propsOffs);
+        props Properties <optimize=false>;
+    }
+    FSeek(FileSize());
+} mtrlProps <name="Material Properties (edit here)">;
+
+if (hasUknStructs) {
+    FSeek(0);
+    struct {
+        FSeek(hasUknStructs);
+        for (i = 0; i < Header.mtrlCount; i++) {
+            FSeek(Header.mtrls.mtrl[i].uknStructsOffs);
+            struct unknownStruct {
+                local ushort idx <hidden=true> = i;
+                if (Header.mtrls.mtrl[i].uknStructsOffs) {
+                    local uint furthestAddress <hidden=true> = FTell();
+                    uint64 offsets[4];
+                    for (j = 0; j < 4; j++) {
+                        FSeek(offsets[j]);
+                        struct {
+                            uint count;
+                            for (k=0; k<count; k++)
+                                struct texID {
+                                    uint id;
+                                    local ushort matIdx <hidden=true> = i;
+                                } TexID <read=ReadTexID, write=WriteTexID>;
+                            furthestAddress = FTell();
+                        } TexIDs;
+                        FSeek(pos+8);
+                    }
+                    FSeek(furthestAddress);
+                } else {
+                    ubyte null;
+                }
+            } MatTexIDs <name=ReadUnknownStruct>;
+        }
+        FSeek(1);
+    } TexIDs;
+}
+
+    string ReadUnknownStruct(unknownStruct &u) { return Header.mtrls.mtrl[u.idx].mtrlName.st; }
+
+    string ReadTexID(texID &t) { 
+        return (string)texHdrs.mtrl[t.matIdx].TEX[t.id].Path.st;
+    }

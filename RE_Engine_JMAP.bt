@@ -1,0 +1,219 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_jmap.bt
+//   Authors: alphaZomega
+//   Version: 0.2
+//   Purpose: Parsing RE Engine jmap files
+//  Category: RE Engine
+// File Mask: *.jmap.*
+//  ID Bytes: 
+//   History: Oct 10, 2022
+//------------------------------------------------
+
+
+LittleEndian();
+SetForeColor(cGreen);
+
+local uint i <hidden=1>;
+
+typedef struct {
+    uint64 strOffset;
+    FSeek(strOffset);
+    wstring String;
+    FSeek(startof(this)+8);
+} StringRead <open=suppress, read=ReadStringRead, write=WriteStringRead>;
+
+    wstring ReadStringRead(StringRead &st) { return st.String; }
+
+    void WriteStringRead(StringRead &st, string s) { 
+        char buffer[sizeof(st.String)];
+        WriteBytes(buffer, startof(st.String), sizeof(st.String)); //write 0s
+        //WriteWString(startof(st.String), s );
+        st.String = s; 
+    }
+
+//Old template for RE2:
+if (ReadUInt()==10) {
+    struct {
+        uint32 ukn1;
+	    FSeek(16);
+	    uint64 bonesOffset;
+	    uint64 afterBonesOffs;
+	    uint64 offs2;
+	    uint64 offs3;
+	    uint64 ukn2;
+	    ushort boneCount;
+        ushort ukn3;
+        FSkip(4);
+    } HEADER;
+    
+    local int i <hidden=true>, pos <hidden=true>;
+    
+    struct {
+        struct {
+            float floats[8] <open=true>;
+            uint32 parent;
+            uint32 uknHash;
+            FSkip (8);
+        } BONES[HEADER.boneCount] <optimize=false>;
+    } BONES;
+    
+    struct {
+        ushort ukn1Offs;
+        ushort ukn[23];
+        ushort ukn1[120];
+    } AFTERBONES;
+    
+    struct {
+        uint64 boneHashesOffs;
+        uint64 postHashesOffs; FSkip (4);
+        uint32 numHashes; FSkip (8);
+        uint32 Hashes[numHashes];
+        FSeek (postHashesOffs);
+        ubyte ukn[numHashes];
+    } BONEHASHES;
+    
+    FSeek (HEADER.offs3);
+    struct {
+        uint64 onesOffs;
+        uint64 midOffs;
+        uint64 offsetsOffs;
+        uint64 num;
+        ubyte uknBytes[num];
+        FSeek (offsetsOffs);
+        uint64 offsets[num];
+        struct {
+            for(i = 0; i < num ; i++){
+                FSeek (offsets[i]);
+                struct {
+                    uint32 hash1;
+                    uint32 hash2;
+                    uint32 uknVal;
+                    float rangeStart;
+                    float rangeEnd;      
+                } uknVals;
+            }
+        } uknValues;
+    } UKN;
+
+}
+
+//RE8+
+if (ReadUInt()>=17) {
+    struct {
+        uint version;
+        uint magic;
+        FSkip(8);
+        uint64 jointMaskGroupTbl;
+        uint64 jointExGroupDataPtr;
+        uint64 extraJointDataPtr;
+        uint64 ikMotionDataPtr;
+        uint64 symmetryMirrorDataPtr;
+        if (version >= 19)
+            uint64 ukn;
+        uint32 AttributeFlags;
+        uint16 jointMaskGroupCount;
+    } Header;
+
+    FSeek(Header.jointMaskGroupTbl);
+    if (Header.jointMaskGroupTbl) {
+        struct {
+            struct {
+                uint64 jointNameHashTbl;
+                uint64 maskTbl;
+                uint64 weightTbl;
+                uint32 groupID;
+                uint16 jointCount;
+                uint16 empty;
+                FSeek(jointNameHashTbl);
+                if (jointNameHashTbl)
+                    uint jointHash[jointCount];
+                FSeek(maskTbl);
+                if (maskTbl)
+                    uchar mask[jointCount];
+                FSeek(weightTbl);
+                if (weightTbl)
+                    float weight[jointCount];
+                FSeek(startof(empty)+2);
+            } jointMaskGroup[Header.jointMaskGroupCount] <optimize=false>;
+        } jointMaskGroups;
+    }
+    
+    FSeek(Header.jointExGroupDataPtr);
+    if (Header.jointExGroupDataPtr) {
+        struct { 
+            uint64 jointExTypeTbl;
+            uint64 jointExLodTbl;
+            uint64 jointExDataPtrTbl;
+            uint32 count;
+            if (count) {
+                FSeek(jointExTypeTbl);
+                if (jointExTypeTbl)
+                    uchar jointExType[count];
+                FSeek(jointExLodTbl);
+                if (jointExLodTbl)
+                    uchar jointExLod[count];
+                FSeek(jointExDataPtrTbl);
+                if (jointExDataPtrTbl)
+                    uint64 jointExDataPtr[count];
+            }
+        } jointExGroupData;
+    }
+    
+    FSeek(Header.extraJointDataPtr);
+    if (Header.extraJointDataPtr) {
+        struct {
+            uint64 extraJointTbl;
+            uint32 extraJointCount;
+            if (extraJointCount && extraJointTbl) {
+                FSeek(extraJointTbl);
+                for(i=0; i<extraJointCount; i++) {
+                    struct extraJoint {
+                        StringRead parentName;
+                        StringRead jointName;
+                        uint32 parentNameHash;
+                        uint32 jointNameHash;
+                        uint32 symmetryNameHash;
+                        uint16 attrFlags;
+                        uint16 padding;
+                        if (Header.version == 19)
+                            uint64 ukn;
+                    } ExtraJoint <read=ReadExtraJoint>;
+                }
+            }
+        } extraJoints;
+    }
+    
+    FSeek(Header.ikMotionDataPtr);
+    if (Header.ikMotionDataPtr && Header.ikMotionDataPtr < FileSize()) {
+        uint32 ikJointNameHash;
+        uint32 fkJointNameHash;
+        byte ikType;
+        char descendantLevelFromIkHandle;
+        byte ikDirection;
+        byte ikUpvector;
+    }
+
+    FSeek(Header.symmetryMirrorDataPtr);
+    if (Header.symmetryMirrorDataPtr && Header.symmetryMirrorDataPtr < FileSize()) {
+        struct symmetryMirrorData {
+            uint64 mirrorJointHashTbl;
+            uint64 mirrorTbl;
+            int mirrorTblCount;
+            struct SymmetryMirrorData DefaultMirror;
+            
+            FSeek(mirrorJointHashTbl);
+            if (mirrorJointHashTbl)
+                uint mirrorJointHash[mirrorTblCount];
+    
+            FSeek(mirrorTbl);
+            if (mirrorTbl)
+                struct SymmetryMirrorData mirror[mirrorTblCount] <optimize=false>;
+        } SymmetryMirrorData;
+    }
+}
+
+    wstring ReadExtraJoint(extraJoint &e) {
+        return e.parentName.String + " -> " + e.jointName.String;
+    }

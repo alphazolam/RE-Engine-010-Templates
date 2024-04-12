@@ -1,0 +1,56 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Script File
+//
+//      File: RE_Engine_motlist_translationSetter.1sc
+//   Authors: alpaZomega
+//   Version: 0.4
+//   Purpose: Use with RE_Engine_motlist.bt to change a bone's positions without injecting
+//  Category: RE Engine
+//   History: April 29th 2023
+//------------------------------------------------
+
+
+int motToChange = Atoi(InputString("Input Mot Number to Change", "Input Mot Number, or '-1' to change all", "-1"));
+int trackType = InputNumber("Translation or Scale", "0 for translation\n2 for scale", "0");
+string boneName = InputString("Input Bone Name or Index", "Bone Name or Index:\nInput '-1' for all", "-1");
+
+int doAssign = Atoi(InputString("Multiply or Assign", "Multiply by the new value, or assign it directly?\n 0 for multiply\n1 for assign", "-1"));
+
+if (doAssign){
+    float assignX = Atof(InputString("Input X", "New X value:", "1"));
+    float assignY = Atof(InputString("Input Y", "New Y value:", "1"));
+    float assignZ = Atof(InputString("Input Z", "New Z value:", "1"));
+} else {
+    float multiX = Atof(InputString("Input X Multiplier", "Multiply X", "1"));
+    float multiY = Atof(InputString("Input Y Multiplier", "Multiply Y:", "1"));
+    float multiZ = Atof(InputString("Input Z Multiplier", "Multiply Z:", "1"));
+}
+
+local int z, i, j;
+while (exists(MOT[z])) {
+    if (z == motToChange || motToChange == -1) {
+        for (i=0; i < MOT[z].MOT_HEADER.boneClipCount; i++) {
+            if (boneName == "-1" || ((i != 0 || boneName == "0") && i == Atoi(boneName)) || MOT[z].BONE_CLIP_HEADERS.bnClipHdr[i].name == boneName) {
+                //Printf("Found %s\n", MOT[z].BONE_CLIP_HEADERS.bnClipHdr[i].name);
+                if (exists(MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[0].TranslationX))
+                    for (j=0; j<MOT[z].clipTracks.tracks[i].trnsltn.keyCount; j++) {
+                        if (doAssign){
+                            MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[j].TranslationX = assignX;
+                            MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[j].TranslationZ = assignY;
+                            MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[j].TranslationY = assignZ;
+                        } else {
+                            MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[j].TranslationX *= multiX;
+                            MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[j].TranslationZ *= multiY;
+                            MOT[z].clipTracks.tracks[i].Frames[trackType].Frames.Frame[j].TranslationY *= multiZ;
+                        }
+                        Printf("Changed MOT[%u] Track[%u] Frame[%u] \n", z, i, j);
+                    }
+                if (boneName != "-1")
+                    break;
+            }
+        }
+        if (motToChange != -1)
+            break;
+    }
+    z++;
+}

@@ -1,0 +1,66 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: SF6_Engine_Cfil
+//   Authors: alphaZomega
+//   Version: 0.01
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+typedef struct {
+    uchar uuid[16] <open=suppress>;
+    local int firstFourBytes <hidden=true> = ReadInt(startof(uuid));
+    if (firstFourBytes != -1 && firstFourBytes != 0 ) {
+        if (FindFirst(firstFourBytes) != startof(uuid) || FindFirst(firstFourBytes,1,0,0,0.0,1,startof(uuid)+16,0,24) != -1) {
+            local string Guid <hidden=true> = TranslateGUID(uuid);
+            FSkip(-4);
+            struct SAMEGUIDS SameGUIDs(TranslateGUID(uuid)) <size=4>;
+        }
+    }
+} rGUID <read=ReadrGUID, write=WriterGuid>;
+
+    string TranslateGUID (uchar uuid[]) {
+        local char s[37];
+        SPrintf(s, 
+            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
+            uuid[3], uuid[2], uuid[1], uuid[0], uuid[5], uuid[4], uuid[7], uuid[6],
+            uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]
+        );
+        return s;
+    }
+
+    string ReadrGUID (rGUID &g) {
+        local string Guid = TranslateGUID(g.uuid);
+        return Guid;
+    }
+
+    void WriterGuid (rGUID &g, string s) {
+        local string out;
+        local byte ii, offset;
+        local uchar uuid[16];
+        for (ii=0; ii<16; ii++) {
+            if (ii==4 || ii== 6 || ii==8 || ii==10)
+                offset++;
+            SScanf(SubStr(s, ii*2 + offset, 2), "%x", uuid[ii]);
+        }
+        local uchar uuid_le[16] = {
+            uuid[3], uuid[2], uuid[1], uuid[0], uuid[5], uuid[4], uuid[7], uuid[6],
+            uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]
+        };
+        WriteBytes(uuid_le, startof(g), 16);
+    }
+
+
+uint magic;
+uint count;
+uint ukn1;
+uint ukn2;
+
+rGUID MyGUID;
+
+uint ukn3, ukn4, ukn5, ukn6;
+uint64 ukn7, ukn8;
+rGUID GUIDList[count];
