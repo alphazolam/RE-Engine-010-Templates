@@ -3,7 +3,7 @@
 //
 //   File:      RE_Engine_MDF.bt
 //   Authors:   Che, Darkness, alphaZomega
-//   Version:   June 6, 2023
+//   Version:   April 18, 2024
 //   Purpose:   Editing of RE Engine MDF material files
 //   Category:  
 //   File Mask: *
@@ -17,7 +17,7 @@ local uint64 i <hidden=true>, j <hidden=true>,\
 local int matchSize <hidden=true>, Version <hidden=true> = 10;
 local string fName <hidden=true> = GetFileName();
 local int numVersion = Atoi(SubStr(FileNameGetExtension(fName), 1, -1));
-local int isSF6 = (numVersion==30 || numVersion==31 || numVersion == 32);
+local int isV2 = (numVersion >= 30 && numVersion < 100);
 local ubyte hasUknStructs <hidden=true>;
 /* ----DEFINITIONS---- */
 
@@ -423,7 +423,7 @@ uint getMaxSize(uint start) {
 			FSkip(8);           
         MaterialShadingType materialShadingType <name="Shader Type">;
         
-        if (isSF6)
+        if (isV2)
             uint ukn;
 
 		enum <ubyte> {
@@ -437,7 +437,7 @@ uint getMaxSize(uint start) {
 		FSeek(startof(Alpha_Flag_Preset));
         ALPHAFLAG Flags <format=binary, name="Flags">;
         
-        if (isSF6) {
+        if (isV2) {
             uint ukn1, ukn2;
         }
 
@@ -449,7 +449,7 @@ uint getMaxSize(uint start) {
         uint64 propsOffs <format=hex, name="Properties Data Block Offset">;
         uint64 mmtrPath_Offs <format=hex, name="MasterMaterial File Path Offset">; 
         
-        if (isSF6) {
+        if (isV2) {
             uint64 uknStructsOffs;
             if (!hasUknStructs && uknStructsOffs)
                 hasUknStructs = uknStructsOffs;
@@ -549,11 +549,6 @@ struct {
 
 } Header <name="File Header">;
     string readblank(byte &ref) { return " ";}
-
-/*if (isSF6 && 1)
-    Version = 13;
-else if (!isSF6 && ReadUInt(Header.mtrls.mtrl[0].propHdrsOffs + 16) == 0)
-    Version = 13;*/
 
 struct {
     for (i = 0; i < Header.mtrlCount; i++)
