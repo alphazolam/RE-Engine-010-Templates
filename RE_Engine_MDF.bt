@@ -3,7 +3,7 @@
 //
 //   File:      RE_Engine_MDF.bt
 //   Authors:   Che, Darkness, alphaZomega
-//   Version:   April 18, 2024
+//   Version:   May 10, 2024
 //   Purpose:   Editing of RE Engine MDF material files
 //   Category:  
 //   File Mask: *
@@ -19,7 +19,15 @@ local string fName <hidden=true> = GetFileName();
 local int numVersion = Atoi(SubStr(FileNameGetExtension(fName), 1, -1));
 local int isV2 = (numVersion >= 30 && numVersion < 100);
 local ubyte hasUknStructs <hidden=true>;
-/* ----DEFINITIONS---- */
+
+
+// =====================================================================
+// ===================== Definitions ===================================
+// =====================================================================
+// offset
+    typedef uint64 offs64_t<read=Str("%Xh", this)>;
+    typedef uint32 offs32_t<read=Str("%Xh", this)>;
+
 
 typedef enum <uint>
 {
@@ -69,141 +77,149 @@ typedef struct {
 	ubyte NoRayTracing : 1;
 } ALPHAFLAG;
 
-uint32 fmix32(uint32 h){
-  h ^= h >> 16;
-  h *= 0x85ebca6b;
-  h ^= h >> 13;
-  h *= 0xc2b2ae35;
-  h ^= h >> 16;
+// TODO move into a common include file
+// Utility functions {
+    uint32 fmix32(uint32 h) {
+        h ^= h >> 16;
+        h *= 0x85ebca6b;
+        h ^= h >> 13;
+        h *= 0xc2b2ae35;
+        h ^= h >> 16;
 
-  return h;
-}
-
-int find(wstring str, wstring term) { return (RegExSearch(str, term, matchSize, 0)); }
-
-int findS(string str, string term) { return (RegExSearch(str, term, matchSize, 0)); }
-
-uint32 mmh3 (byte key[], uint32 length , uint32 seed){
-    local uint64 block_start<hidden=true>;
-    local const uint nBlocks = length / 4;
-    local uint32 h1 = seed;
-    
-    local const uint32 c1 = 0xcc9e2d51;
-    local const uint32 c2 = 0x1b873593;
-
-    local uint32 k1;
-
-    local byte salam = 32;
-    for(block_start = 0; block_start < nBlocks * 4; block_start+= 4){
-        k1 = (uint32)key[block_start + 3] << 24 | \
-             (uint32)key[block_start + 2] << 16 | \
-             (uint32)key[block_start + 1] << 8 | \
-             (uint32)key[block_start + 0];
-
-        k1 = (c1 * k1) & 0xFFFFFFFF;
-        k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
-        k1 = (c2 * k1) & 0xFFFFFFFF;
-
-        h1 ^= k1;
-        h1 = (h1 << 13 | h1 >> 19) & 0xFFFFFFFF;
-        h1 = (h1 * 5 + 0xe6546b64) & 0xFFFFFFFF;
+        return h;
     }
 
-    local uint32 tail_index = nBlocks * 4;
-    k1 = 0;
-    local uint32 tail_size = length & 3;
-
-    if(tail_size >= 3)
-        k1 ^= (uint32)key[tail_index + 2] << 16;
-    if(tail_size >= 2)
-        k1 ^= (uint32)key[tail_index + 1] << 8;
-    if(tail_size >= 1)
-        k1 ^= (uint32)key[tail_index + 0];
-
-    if(tail_size > 0){
-        k1 = (k1 * c1) & 0xFFFFFFFF;
-        k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
-        k1 = (k1 * c2) & 0xFFFFFFFF;
-        h1 ^= k1;
+    int find(wstring str, wstring term) { 
+        return (RegExSearch(str, term, matchSize, 0)); 
     }
 
-    return fmix32(h1 ^ length);
-}
-
-uint32 hashASC(string key){
-    local uint64 it<hidden=true>;
-    local const uint length = Strlen(key);
-    local byte key_array[length];
-    for(it = 0; it < length; it++){
-        key_array[it] = key[it];
+    int findS(string str, string term) { 
+        return (RegExSearch(str, term, matchSize, 0)); 
     }
 
-    return mmh3(key_array, length, 0xFFFFFFFF);
-}
+    uint32 mmh3 (byte key[], uint32 length , uint32 seed){
+        local uint64 block_start<hidden=true>;
+        local const uint nBlocks = length / 4;
+        local uint32 h1 = seed;
+        
+        local const uint32 c1 = 0xcc9e2d51;
+        local const uint32 c2 = 0x1b873593;
 
-uint32 hash_wide(string key){
-    local uint64 it<hidden=true>;
-    local const uint length = Strlen(key) * 2;
-    local byte key_array[length];
-    for(it = 0; it < length; it += 2){
-        key_array[it] = key[it / 2];
-        key_array[it + 1] = 0;
-    }
+        local uint32 k1;
 
-    return 0; //mmh3(key_array, length, 0xFFFFFFFF);
-}
+        local byte salam = 32;
+        for(block_start = 0; block_start < nBlocks * 4; block_start+= 4){
+            k1 = (uint32)key[block_start + 3] << 24 | \
+                (uint32)key[block_start + 2] << 16 | \
+                (uint32)key[block_start + 1] << 8 | \
+                (uint32)key[block_start + 0];
 
-uint32 hashWs(wstring key){
-    return hash_wide((string)key);
-}
+            k1 = (c1 * k1) & 0xFFFFFFFF;
+            k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
+            k1 = (c2 * k1) & 0xFFFFFFFF;
 
-uint32 hashASCWs(wstring key){
-    return hashASC((string)key);
-}
-
-void Fix_Off(uint64 off, int64 sz){
-    uint64 i, j;
-    for(i = 0; i < Header.mtrlCount; i++){
-        if(Header.mtrls.mtrl[i].mtrlNameOffs > off)      Header.mtrls.mtrl[i].mtrlNameOffs      += sz;
-        if(Header.mtrls.mtrl[i].propHdrsOffs > off)      Header.mtrls.mtrl[i].propHdrsOffs      += sz;
-        if(Header.mtrls.mtrl[i].texHdrOffs > off)        Header.mtrls.mtrl[i].texHdrOffs        += sz;
-        if(Header.mtrls.mtrl[i].propsOffs > off)         Header.mtrls.mtrl[i].propsOffs         += sz;
-        if(Header.mtrls.mtrl[i].mmtrPath_Offs > off)     Header.mtrls.mtrl[i].mmtrPath_Offs     += sz;
-        for (j = 0; j < Header.mtrls.mtrl[i].texCount; j++){
-            if(texHdrs.mtrl[i].TEX[j].typeOffs > off)    texHdrs.mtrl[i].TEX[j].typeOffs   += sz;
-            if(texHdrs.mtrl[i].TEX[j].pathOffs > off)    texHdrs.mtrl[i].TEX[j].pathOffs   += sz;
+            h1 ^= k1;
+            h1 = (h1 << 13 | h1 >> 19) & 0xFFFFFFFF;
+            h1 = (h1 * 5 + 0xe6546b64) & 0xFFFFFFFF;
         }
-        for (j = 0; j < Header.mtrls.mtrl[i].propCount; j++){
-            if(propHdrs.mtrl[i].prop[j].propNameOffs > off)  propHdrs.mtrl[i].prop[j].propNameOffs += sz;
+
+        local uint32 tail_index = nBlocks * 4;
+        k1 = 0;
+        local uint32 tail_size = length & 3;
+
+        if(tail_size >= 3)
+            k1 ^= (uint32)key[tail_index + 2] << 16;
+        if(tail_size >= 2)
+            k1 ^= (uint32)key[tail_index + 1] << 8;
+        if(tail_size >= 1)
+            k1 ^= (uint32)key[tail_index + 0];
+
+        if(tail_size > 0){
+            k1 = (k1 * c1) & 0xFFFFFFFF;
+            k1 = (k1 << 15 | k1 >> 17) & 0xFFFFFFFF;
+            k1 = (k1 * c2) & 0xFFFFFFFF;
+            h1 ^= k1;
         }
-        if (exists(TexIDs)) {
-            if(Header.mtrls.mtrl[i].uknStructsOffs > off)     Header.mtrls.mtrl[i].uknStructsOffs     += sz;
-            for (j = 0; j < 4; j++)
-                if(exists(TexIDs.MatTexIDs[i].offsets) && TexIDs.MatTexIDs[i].offsets[j] > off)  
-                    TexIDs.MatTexIDs[i].offsets[j] += sz;
+
+        return fmix32(h1 ^ length);
+    }
+
+    uint32 hashASC(string key){
+        local uint64 it<hidden=true>;
+        local const uint length = Strlen(key);
+        local byte key_array[length];
+        for(it = 0; it < length; it++){
+            key_array[it] = key[it];
+        }
+
+        return mmh3(key_array, length, 0xFFFFFFFF);
+    }
+
+    uint32 hash_wide(string key){
+        local uint64 it<hidden=true>;
+        local const uint length = Strlen(key) * 2;
+        local byte key_array[length];
+        for(it = 0; it < length; it += 2){
+            key_array[it] = key[it / 2];
+            key_array[it + 1] = 0;
+        }
+
+        // return 0; //mmh3(key_array, length, 0xFFFFFFFF);
+        return mmh3(key_array, length, 0xFFFFFFFF);
+    }
+
+    uint32 hashWs(wstring key){
+        return hash_wide((string)key);
+    }
+
+    uint32 hashASCWs(wstring key){
+        return hashASC((string)key);
+    }
+
+    void Fix_Off(uint64 off, int64 sz){
+        uint64 i, j;
+        for(i = 0; i < Header.mtrlCount; i++){
+            if(Header.mtrls.mtrl[i].mtrlNameOffs > off)      Header.mtrls.mtrl[i].mtrlNameOffs      += sz;
+            if(Header.mtrls.mtrl[i].propHdrsOffs > off)      Header.mtrls.mtrl[i].propHdrsOffs      += sz;
+            if(Header.mtrls.mtrl[i].texHdrOffs > off)        Header.mtrls.mtrl[i].texHdrOffs        += sz;
+            if(Header.mtrls.mtrl[i].propsOffs > off)         Header.mtrls.mtrl[i].propsOffs         += sz;
+            if(Header.mtrls.mtrl[i].mmtrPath_Offs > off)     Header.mtrls.mtrl[i].mmtrPath_Offs     += sz;
+            for (j = 0; j < Header.mtrls.mtrl[i].texCount; j++){
+                if(texHdrs.mtrl[i].TEX[j].typeOffs > off)    texHdrs.mtrl[i].TEX[j].typeOffs   += sz;
+                if(texHdrs.mtrl[i].TEX[j].pathOffs > off)    texHdrs.mtrl[i].TEX[j].pathOffs   += sz;
+            }
+            for (j = 0; j < Header.mtrls.mtrl[i].propCount; j++){
+                if(propHdrs.mtrl[i].prop[j].propNameOffs > off)  propHdrs.mtrl[i].prop[j].propNameOffs += sz;
+            }
+            if (exists(TexIDs)) {
+                if(Header.mtrls.mtrl[i].uknStructsOffs > off)     Header.mtrls.mtrl[i].uknStructsOffs     += sz;
+                for (j = 0; j < 4; j++)
+                    if(exists(TexIDs.MatTexIDs[i].offsets) && TexIDs.MatTexIDs[i].offsets[j] > off)  
+                        TexIDs.MatTexIDs[i].offsets[j] += sz;
+            }
         }
     }
-}
 
-string Lower(string s) {
-    local string s2 = s;
-    for (k=0; k < sizeof(s); k++)
-        s2[k] = ToLower(s[k]);
-    return s2;
-}
+    string Lower(string s) {
+        local string s2 = s;
+        for (k=0; k < sizeof(s); k++)
+            s2[k] = ToLower(s[k]);
+        return s2;
+    }
 
-int doesExist(string str, string term) {
-    return (RegExSearch(str, term, matchSize, 0) != -1);
-}
+    int doesExist(string str, string term) {
+        return (RegExSearch(str, term, matchSize, 0) != -1);
+    }
 
-uint getMaxSize(uint start) {
-	local uint pos = FTell();
-	FSeek(start + sizeof(ReadWString(start)));
-	while (ReadUByte(FTell()) == 0) FSkip(1);
-	local uint size = FTell() - start;
-	FSeek(pos);
-	return size;
-}
+    uint getMaxSize(uint start) {
+        local uint pos = FTell();
+        FSeek(start + sizeof(ReadWString(start)));
+        while (ReadUByte(FTell()) == 0) FSkip(1);
+        local uint size = FTell() - start;
+        FSeek(pos);
+        return size;
+    }
+// }
 
 //String type
     typedef struct{
@@ -231,6 +247,38 @@ uint getMaxSize(uint start) {
         }
 		Printf("Refresh the template with F5 to fix template results\n");
     };
+
+
+// Gpu buffer stuff
+    typedef struct {
+        uint64 nameOffs<format=hex, name="Gpbf Name Offset">; pos = FTell();
+        FSeek(nameOffs);
+        mdf_str_t name<name="Gpbf Name">;
+        
+        FSeek(pos);
+        offs32_t nameUIF16Hash <name="Name UTF-16 Hash">;
+        offs32_t nameASCIIHash <name="Name ASCII Hash">;
+
+        // local offs32_t gennedHash<format=hex> = hashWs(name.st);
+        // local offs32_t gennedHashAscii<format=hex> = hashASCWs(name.st);
+
+    } Gpbf<name=Str(this.name.st), 
+           read=Str("%Xh | %Xh", this.nameUIF16Hash, this.nameASCIIHash), 
+           optimize=false>;
+
+
+//Material container
+    typedef struct {
+        local wstring mtrlName <hidden=true> = Header.mtrls.mtrl[i].mtrlName.st;
+
+        for (j = 0; j < Header.mtrls.mtrl[i].gpbf[0]; j++)
+            Gpbf gpbf;
+
+        for (j = 0; j < Header.mtrls.mtrl[i].gpbf[1]; j++)
+            Gpbf gpbf1;
+
+    } GpbfHdr<name=Str(this.mtrlName)>;
+
 
 //Properties
     typedef struct {
@@ -317,8 +365,8 @@ uint getMaxSize(uint start) {
         mdf_str_t propName <name="Property Name">;
         
         FSeek(pos);
-        uint32 nameUIF16Hash <name="Name UTF-16 Hash">;
-        uint32 nameASCIIHash <name="Name ASCII Hash">;
+        offs32_t nameUIF16Hash <name="Name UTF-16 Hash">;
+        offs32_t nameASCIIHash <name="Name ASCII Hash">;
 
         if (numVersion >= 13)
         {
@@ -357,8 +405,8 @@ uint getMaxSize(uint start) {
 //Textures
     typedef struct {
         uint64 typeOffs <format=hex, name="Texture Type Offset">;
-        uint32 texUTF16Hash <name="UTF-16 Texture Type Hash", open=suppress>;
-        uint32 texASCIIHash <name="ASCII Texture Type Hash", open=suppress>;
+        offs32_t texUTF16Hash <name="UTF-16 Texture Type Hash", open=suppress>;
+        offs32_t texASCIIHash <name="ASCII Texture Type Hash", open=suppress>;
         uint64 pathOffs <format=hex, name="Texture File Path Offset">;
         if (numVersion >= 13) 
             uint64 ukn <hidden=0>;
@@ -411,7 +459,8 @@ uint getMaxSize(uint start) {
 //Material Headers
     typedef struct {
         uint64 mtrlNameOffs <format=hex, name="Material Name Offset">;
-        uint32 hash <name="Material Name Hash">;
+        uint32 hash <name="Material Name Hash", format=hex>;
+        
         if (numVersion == 6) //ReadUInt64(48) > FileSize() ||
             uint uknRE7, uknRE7;
         
@@ -420,11 +469,15 @@ uint getMaxSize(uint start) {
         uint32 texCount <name="Texture Count">; 
         
 		if (numVersion >= 19 && numVersion < 100000)
-			FSkip(8);           
+        {
+            int32 gpbf;
+            int32 gpbf;
+        }
+			
         MaterialShadingType materialShadingType <name="Shader Type">;
         
         if (isV2)
-            uint ukn;
+            uint unkInt_0x24;
 
 		enum <ubyte> {
 			Default = 144,
@@ -437,20 +490,23 @@ uint getMaxSize(uint start) {
 		FSeek(startof(Alpha_Flag_Preset));
         ALPHAFLAG Flags <format=binary, name="Flags">;
         
-        if (isV2) {
-            uint ukn1, ukn2;
+        if (isV2) 
+        {
+            int32 unkInt_0x2C;
+            int32 unkInt_0x30;
         }
 
         uint64 propHdrsOffs <format=hex, name="Property Headers Offset">;             
         uint64 texHdrOffs <format=hex, name="Tex Headers Offset">;
 		if (numVersion >= 19 && numVersion < 100000)
-			uint64 firstMtrlNameOffs <format=hex, name="First Material Name Offset">;
+			uint64 gpbfOffs <format=hex, name="Gpbf Offset">;
 
         uint64 propsOffs <format=hex, name="Properties Data Block Offset">;
         uint64 mmtrPath_Offs <format=hex, name="MasterMaterial File Path Offset">; 
         
         if (isV2) {
-            uint64 uknStructsOffs;
+            offs64_t uknStructsOffs;
+            
             if (!hasUknStructs && uknStructsOffs)
                 hasUknStructs = uknStructsOffs;
         }
@@ -533,7 +589,10 @@ ubyte UniquePathWriter <name="Make Unique", read=ReadUniqueWriter, write=WriteUn
         MessageBox( idOk, "Make Unique", "%sPress F5 to refresh the template and fix template results", "");
     }
 
-/* ----START---- */
+
+// =====================================================================
+// ===================== Start =========================================
+// =====================================================================
 struct {
     char   id[4] <name="File ID", open=suppress>;
     uint16 version;
@@ -543,6 +602,7 @@ struct {
     struct {
         for (i = 0; i < mtrlCount; i++)
             mtrlHdr mtrl;
+
     } mtrls <open=true, name="Materials">;
     FSkip(-1); byte blank <name=readblank,read=readblank>;
 
@@ -566,6 +626,25 @@ struct {
     }
 } propHdrs <name="Material Properties Headers">;
 
+
+if (numVersion >= 19 && numVersion < 100000)
+{
+    FSeek(Header.mtrls.mtrl[0].gpbfOffs);
+
+    if (Header.mtrls.mtrl[0].gpbf[0])
+    {
+        struct {
+            for (i = 0; i < Header.mtrlCount; i++)
+            {
+                FSeek(Header.mtrls.mtrl[i].gpbfOffs);
+
+                GpbfHdr gpbfHdr;
+            }
+        } gpbf<name="Gpu Buffers">;
+    }
+}
+
+
 if (Header.mtrls.mtrl[0].propHdrsOffs)
     FSeek(Header.mtrls.mtrl[0].propHdrsOffs);
 
@@ -579,21 +658,30 @@ struct {
     FSeek(FileSize());
 } mtrlProps <name="Material Properties (edit here)">;
 
-if (hasUknStructs) {
+
+if (hasUknStructs) 
+{
     FSeek(0);
     struct {
         FSeek(hasUknStructs);
-        for (i = 0; i < Header.mtrlCount; i++) {
+
+        for (i = 0; i < Header.mtrlCount; i++) 
+        {
             FSeek(Header.mtrls.mtrl[i].uknStructsOffs);
             struct unknownStruct {
                 local ushort idx <hidden=true> = i;
-                if (Header.mtrls.mtrl[i].uknStructsOffs) {
+
+                if (Header.mtrls.mtrl[i].uknStructsOffs) 
+                {
                     local uint furthestAddress <hidden=true> = FTell();
                     uint64 offsets[4];
-                    for (j = 0; j < 4; j++) {
+
+                    for (j = 0; j < 4; j++) 
+                    {
                         FSeek(offsets[j]);
                         struct {
                             uint count;
+                            
                             for (k=0; k<count; k++)
                                 struct texID {
                                     uint id;
@@ -603,12 +691,14 @@ if (hasUknStructs) {
                         } TexIDs;
                         FSeek(pos+8);
                     }
+
                     FSeek(furthestAddress);
                 } else {
                     ubyte null;
                 }
             } MatTexIDs <name=ReadUnknownStruct>;
         }
+
         FSeek(1);
     } TexIDs;
 }
