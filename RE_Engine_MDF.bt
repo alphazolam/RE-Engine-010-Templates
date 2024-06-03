@@ -3,7 +3,7 @@
 //
 //   File:      RE_Engine_MDF.bt
 //   Authors:   Che, Darkness, alphaZomega
-//   Version:   May 10, 2024
+//   Version:   May 31, 2024
 //   Purpose:   Editing of RE Engine MDF material files
 //   Category:  
 //   File Mask: *
@@ -25,9 +25,10 @@ local ubyte hasUknStructs <hidden=true>;
 // ===================== Definitions ===================================
 // =====================================================================
 // offset
-    typedef uint64 offs64_t<read=Str("%Xh", this)>;
-    typedef uint32 offs32_t<read=Str("%Xh", this)>;
-
+    typedef uint64 offs64_t<read=ReadOffs64>;
+    typedef uint32 offs32_t<read=ReadOffs32>;
+    string ReadOffs64( offs64_t& ref ) { local string out; SPrintf(out, "%Xh", ref); return out; }
+    string ReadOffs32( offs32_t& ref ) { local string out; SPrintf(out, "%Xh", ref); return out; }
 
 typedef enum <uint>
 {
@@ -165,7 +166,9 @@ typedef struct {
         }
 
         // return 0; //mmh3(key_array, length, 0xFFFFFFFF);
-        return mmh3(key_array, length, 0xFFFFFFFF);
+        if (exists(key_array))
+            return mmh3(key_array, length, 0xFFFFFFFF);
+        return 0;
     }
 
     uint32 hashWs(wstring key){
@@ -262,9 +265,9 @@ typedef struct {
         // local offs32_t gennedHash<format=hex> = hashWs(name.st);
         // local offs32_t gennedHashAscii<format=hex> = hashASCWs(name.st);
 
-    } Gpbf<name=Str(this.name.st), 
-           read=Str("%Xh | %Xh", this.nameUIF16Hash, this.nameASCIIHash), 
-           optimize=false>;
+    } Gpbf<name=ReadGpbfName, read=ReadGpbf, optimize=false>;
+    string ReadGpbfName( Gpbf& ref ) { return ref.name.st; }
+    string ReadGpbf( Gpbf& ref ) { local string out; SPrintf(out, "%Xh | %Xh", ref.nameUIF16Hash, ref.nameASCIIHash); return out;}
 
 
 //Material container
@@ -277,7 +280,8 @@ typedef struct {
         for (j = 0; j < Header.mtrls.mtrl[i].gpbf[1]; j++)
             Gpbf gpbf1;
 
-    } GpbfHdr<name=Str(this.mtrlName)>;
+    } GpbfHdr<name=ReadGpbfHdrName>;
+    string ReadGpbfHdrName( GpbfHdr& ref ) { return ref.mtrlName; }
 
 
 //Properties
@@ -640,7 +644,7 @@ if (numVersion >= 19 && numVersion < 100000)
 
                 GpbfHdr gpbfHdr;
             }
-        } gpbf<name="Gpu Buffers">;
+        } gpbf;
     }
 }
 
