@@ -642,7 +642,7 @@ typedef struct {
 
 typedef struct {
     
-    if (HEADER.Version == 663 || HEADER.Version == 653) {
+    if (HEADER.Version == 663 || HEADER.Version == 653 || HEADER.Version == 751) {
         propSize = 56;
         keySize = 32;
     } else if (HEADER.version == 486 || HEADER.version == 484) {
@@ -2103,11 +2103,13 @@ if (bytes == "mot ") //single .mot files
         HEADER.version = 85;
     else if (motVersion == 78) 
         HEADER.version = 99;
-    else if (motVersion == 458 || motVersion == 524 || motVersion == 456 || motVersion == 492 || motVersion == 495 || motVersion == 603 || motVersion == 613) 
+    else if (motVersion == 458 || motVersion == 524 || motVersion == 456 || motVersion == 492 || motVersion == 495 || motVersion == 603 || motVersion == 613 || motVersion == 698) 
         HEADER.version = 486;
     HEADER.Version = HEADER.version;
     if (motVersion == 603 || motVersion == 613)
         HEADER.Version = 663;
+    if (motVersion == 698)
+        HEADER.Version = 751;
     mot MOT;
 }
 else if (NOCLIP == FALSE && ReadUInt(FTell()) == 1346980931)
@@ -2120,7 +2122,7 @@ else
     struct {
         uint32  Version;
         local uint version <hidden=false> = Version;
-        if (version == 484 || version == 524 || version == 528 || version==653 || version == 663)
+        if (version == 484 || version == 524 || version == 528 || version==653 || version == 663 || version == 751)
             version = 486;
         char    ID[4];
         uint64  padding;
@@ -2166,7 +2168,7 @@ else
     {
         FSeek(offs[i]);
         motVersion = ReadUInt();
-        if (motVersion == 43 || motVersion == 65 || motVersion == 78 || motVersion == 458 || motVersion == 495 || motVersion == 492 || motVersion==603 || motVersion == 613) {
+        if (motVersion == 43 || motVersion == 65 || motVersion == 78 || motVersion == 458 || motVersion == 495 || motVersion == 492 || motVersion==603 || motVersion == 613 || motVersion == 698) {
             mot MOT;
             FSeek( i < numOffs-1 ? offs[i+1] : FileSize());
             motCounter++;
