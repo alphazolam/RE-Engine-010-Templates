@@ -17,6 +17,7 @@ By alphaZomega
 
 ### RE_Engine_GUI.bt
 By alphaZomega
+- If you have crashes with this template, try disabling CLIP data parsing by setting `DisplayCLIP = false` at the top of the .bt file
 	
 ### RE8_GPUC.bt
 By alphaZomega

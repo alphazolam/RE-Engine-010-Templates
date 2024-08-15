@@ -23,6 +23,7 @@ local uint64 Type <hidden=true>;
 
 //motlist template versions, whatever
 local uint Version <hidden=true> = 85; //RE2 + DMC5; other versions set up in the File Header
+local ubyte DisplayCLIP = true; //Set this to false if the template is crashing
 
 
 //typedef structs
@@ -368,7 +369,7 @@ typedef struct {
         SUBELEMENT SubElement;
     }
     
-    if (false && ElementInfo.clipCount) {
+    if (DisplayCLIP && ElementInfo.clipCount) {
         FSeek(ElementInfo.offset[0]);
         struct CLIP {
             local int z <hidden=true>;
