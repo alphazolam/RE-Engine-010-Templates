@@ -1,0 +1,130 @@
+//------------------------------------------------
+//--- 010 Editor Binary Template
+//
+//      File: MCAMBANK.bt
+//   Authors: Battlezone
+//   Version: 1.0
+//   Purpose: RE Engine Motion Camera Bank Resource
+//  Category: RE Engine
+// File Mask: *.mcambank.*
+//  ID Bytes: 63 62 6E 6B ('cbnk')
+//------------------------------------------------
+
+typedef enum <uint32> {
+    ErrFlags_None              = 0,
+    ErrFlags_Empty             = 1,
+    ErrFlags_NotFoundRefAsset  = 2,
+    ErrFlags_NotFoundIncludeAsset = 4,
+} ErrFlags;
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+void align(int n) {
+    if (FTell() % n == 0) return;
+    FSkip(n - FTell() % n);
+}
+
+//------------------------------------------------
+// HEADER
+//------------------------------------------------
+
+typedef struct {
+    uint32 version   <comment="File version (expected 3)">;
+    uint32 magic     <comment="'cbnk' magic"            >;
+    ErrFlags errFlags<comment="Load issues detected"    >;
+    uint32 masterSize<comment="Size of serialized payload">;
+} MotionCameraBankHeader;
+
+typedef struct {
+    uint64 motBankElementTblOffset <comment="Offset to MotionCameraBankElement table">;
+    uint64 userVariablesOffset     <comment="Offset to via.userdata.UserVariablesResource path (wstring)">;
+    uint32 motBankElementTblCount  <comment="Number of MotionCameraBankElement entries">;
+    uint64 jointMapOffset          <comment="Offset to via.motion.JointMapResource path (wstring)">;
+    uint32 reserved1               <comment="Alignment padding (observed 0)" >;
+} MotionCameraBankBodyV1 <bgcolor=0x404040>;
+
+typedef struct {
+    uint64 motBankElementTblOffset <comment="Offset to MotionCameraBankElement table">;
+    uint64 userVariablesOffset     <comment="Offset to via.userdata.UserVariablesResource path (wstring)">;
+    uint64 jointMapOffset          <comment="Offset to via.motion.JointMapResource path (wstring)">;
+    uint32 motBankElementTblCount  <comment="Number of MotionCameraBankElement entries">;
+    uint32 reserved1               <comment="Alignment padding (observed 0)" >;
+} MotionCameraBankBodyV3 <bgcolor=0x404040>;
+
+local uint64 bankBase = FTell();
+MotionCameraBankHeader header;
+
+if (version == 0)
+    version = header.version;
+
+local uint32 expectedMagic = 0x6B6E6263; // 'cbnk'
+if (header.magic != expectedMagic) {
+    Warning("Unexpected magic value. This may not be a Motion Camera Bank file.");
+}
+
+local uint64 motBankElementTblOffset;
+local uint64 userVariablesOffset;
+local uint64 jointMapOffset;
+local uint32 motBankElementTblCount;
+local uint32 reserved1;
+
+if (version == 1) {
+    MotionCameraBankBodyV1 bank;
+    motBankElementTblOffset = bank.motBankElementTblOffset;
+    userVariablesOffset = bank.userVariablesOffset;
+    motBankElementTblCount = bank.motBankElementTblCount;
+    jointMapOffset = bank.jointMapOffset;
+    reserved1 = bank.reserved1;
+} else {
+    MotionCameraBankBodyV3 bank;
+    motBankElementTblOffset = bank.motBankElementTblOffset;
+    userVariablesOffset = bank.userVariablesOffset;
+    jointMapOffset = bank.jointMapOffset;
+    motBankElementTblCount = bank.motBankElementTblCount;
+    reserved1 = bank.reserved1;
+}
+
+//------------------------------------------------
+// EXTERNAL RESOURCE PATHS
+//------------------------------------------------
+
+local uint64 savePos = FTell();
+
+if (userVariablesOffset) {
+    FSeek(bankBase + userVariablesOffset);
+    wstring userVariablesPath <comment="Path to via.userdata.UserVariablesResource">;
+}
+
+if (jointMapOffset) {
+    FSeek(bankBase + jointMapOffset);
+    wstring jointMapPath <comment="Path to via.motion.JointMapResource">;
+}
+
+FSeek(savePos);
+
+//------------------------------------------------
+// MOTION CAMERA BANK ELEMENTS
+//------------------------------------------------
+
+typedef struct {
+    SetBackColor(0x303030);
+    uint64 motlistOffset  <comment="Offset to MotionCameraList resource path (wstring)">;
+    uint32 bankID         <comment="Camera/Motion identifier">;
+    uint32 bankType       <comment="Element type" >;
+    uint32 bankTypeMaskBit<comment="Bit index in MotionCameraList mask">;
+    uint32 padding        <comment="Padding / alignment">;
+
+    local uint64 entryPos = FTell();
+    if (motlistOffset) {
+        FSeek(bankBase + motlistOffset);
+        wstring listPath <comment="Path to MotionCameraList resource">;
+        FSeek(entryPos);
+    }
+
+} MotionCameraBankElement <optimize=false>;
+
+align(16);
+if (motBankElementTblOffset && motBankElementTblCount) {
+    FSeek(bankBase + motBankElementTblOffset);
+    MotionCameraBankElement elements[motBankElementTblCount] <optimize=false>;
+}
