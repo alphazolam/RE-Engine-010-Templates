@@ -2,12 +2,12 @@
 //--- 010 Editor v9.0.2 Binary Template
 //
 //      File: RE_Engine_jmap.bt
-//   Authors: alphaZomega
-//   Version: 0.2
+//   Authors: alphaZomega, shadowcookie
+//   Version: 0.3
 //   Purpose: Parsing RE Engine jmap files
 //  Category: RE Engine
 // File Mask: *.jmap.*
-//  ID Bytes: 
+//  ID Bytes:
 //   History: Oct 10, 2022
 //------------------------------------------------
 
@@ -15,205 +15,275 @@
 LittleEndian();
 SetForeColor(cGreen);
 
+#include "common.bt";
 local uint i <hidden=1>;
 
-typedef struct {
-    uint64 strOffset;
-    FSeek(strOffset);
-    wstring String;
-    FSeek(startof(this)+8);
-} StringRead <open=suppress, read=ReadStringRead, write=WriteStringRead>;
-
-    wstring ReadStringRead(StringRead &st) { return st.String; }
-
-    void WriteStringRead(StringRead &st, string s) { 
-        char buffer[sizeof(st.String)];
-        WriteBytes(buffer, startof(st.String), sizeof(st.String)); //write 0s
-        //WriteWString(startof(st.String), s );
-        st.String = s; 
-    }
-
-//Old template for RE2:
-if (ReadUInt()==10) {
-    struct {
-        uint32 ukn1;
-	    FSeek(16);
+struct {
+    uint version;
+    uint magic;
+    FSkip(8);
+    if (version <= 11) { //dmc5/re2
 	    uint64 bonesOffset;
 	    uint64 afterBonesOffs;
-	    uint64 offs2;
-	    uint64 offs3;
-	    uint64 ukn2;
+    }
+    uint64 jointMaskGroupTbl;
+    uint64 jointExGroupDataPtr;
+    uint64 extraJointDataPtr;
+
+    if (version <= 11) { //dmc5/re2
 	    ushort boneCount;
-        ushort ukn3;
-        FSkip(4);
-    } HEADER;
-    
-    local int i <hidden=true>, pos <hidden=true>;
-    
-    struct {
-        struct {
-            float floats[8] <open=true>;
-            uint32 parent;
-            uint32 uknHash;
-            FSkip (8);
-        } BONES[HEADER.boneCount] <optimize=false>;
-    } BONES;
-    
-    struct {
-        ushort ukn1Offs;
-        ushort ukn[23];
-        ushort ukn1[120];
-    } AFTERBONES;
-    
-    struct {
-        uint64 boneHashesOffs;
-        uint64 postHashesOffs; FSkip (4);
-        uint32 numHashes; FSkip (8);
-        uint32 Hashes[numHashes];
-        FSeek (postHashesOffs);
-        ubyte ukn[numHashes];
-    } BONEHASHES;
-    
-    FSeek (HEADER.offs3);
-    struct {
-        uint64 onesOffs;
-        uint64 midOffs;
-        uint64 offsetsOffs;
-        uint64 num;
-        ubyte uknBytes[num];
-        FSeek (offsetsOffs);
-        uint64 offsets[num];
-        struct {
-            for(i = 0; i < num ; i++){
-                FSeek (offsets[i]);
-                struct {
-                    uint32 hash1;
-                    uint32 hash2;
-                    uint32 uknVal;
-                    float rangeStart;
-                    float rangeEnd;      
-                } uknVals;
-            }
-        } uknValues;
-    } UKN;
-
-}
-
-//RE8+
-if (ReadUInt()>=17) {
-    struct {
-        uint version;
-        uint magic;
-        FSkip(8);
-        uint64 jointMaskGroupTbl;
-        uint64 jointExGroupDataPtr;
-        uint64 extraJointDataPtr;
+        ushort jointMaskGroupCount;
+        ushort extraJointsCount;
+        FSkip(2);
+    } else {
+        if (version >= 28) uint64 uknOffset;
         uint64 ikMotionDataPtr;
         uint64 symmetryMirrorDataPtr;
+        if (version >= 28) {
+            uint64 SymmetryMirrorData2Ptr;
+            uint64 uknPtr;
+            uint64 uknPtr;
+            uint64 uknPtr;
+            uint64 uknPtr;
+            // uint64 uknPtr;
+        }
         if (version >= 19)
-            uint64 ukn;
+            uint64 skeletonMaskPtr;
         uint32 AttributeFlags;
         uint16 jointMaskGroupCount;
-    } Header;
+        uint8 ikMotionCount;
+    }
+} Header;
 
-    FSeek(Header.jointMaskGroupTbl);
-    if (Header.jointMaskGroupTbl) {
+if (Header.version <= 11) {
+    struct {
         struct {
-            struct {
-                uint64 jointNameHashTbl;
-                uint64 maskTbl;
+            vec3p offset;
+            vec4 rotation;
+            uint16 parent;
+            uint16 null;
+            uint32 boneHash;
+            FSkip (8);
+        } BONES[Header.boneCount] <optimize=false>;
+    } BONES;
+
+    FSeek(Header.afterBonesOffs);
+    struct {
+        uint64 ukn1Offs;
+        uint32 ukn[10];
+        FSeek(ukn1Offs);
+        uint32 ukn1[60];
+    } AFTERBONES;
+}
+
+FSeek(Header.jointMaskGroupTbl);
+if (Header.jointMaskGroupTbl && Header.jointMaskGroupCount) {
+    struct {
+        struct {
+            uint64 jointNameHashTbl;
+            uint64 maskTbl;
+            if (Header.version >= 17) {
                 uint64 weightTbl;
-                uint32 groupID;
-                uint16 jointCount;
-                uint16 empty;
-                FSeek(jointNameHashTbl);
-                if (jointNameHashTbl)
-                    uint jointHash[jointCount];
-                FSeek(maskTbl);
-                if (maskTbl)
-                    uchar mask[jointCount];
+            }
+            uint32 groupID;
+            uint16 jointCount;
+            uint16 empty;
+            FSeek(jointNameHashTbl);
+            if (jointNameHashTbl)
+                uint jointHash[jointCount];
+            FSeek(maskTbl);
+            if (maskTbl)
+                uchar mask[jointCount];
+            if (exists(weightTbl)) {
                 FSeek(weightTbl);
                 if (weightTbl)
                     float weight[jointCount];
-                FSeek(startof(empty)+2);
-            } jointMaskGroup[Header.jointMaskGroupCount] <optimize=false>;
-        } jointMaskGroups;
-    }
-    
-    FSeek(Header.jointExGroupDataPtr);
-    if (Header.jointExGroupDataPtr) {
-        struct { 
-            uint64 jointExTypeTbl;
-            uint64 jointExLodTbl;
-            uint64 jointExDataPtrTbl;
-            uint32 count;
-            if (count) {
-                FSeek(jointExTypeTbl);
-                if (jointExTypeTbl)
-                    uchar jointExType[count];
-                FSeek(jointExLodTbl);
-                if (jointExLodTbl)
-                    uchar jointExLod[count];
-                FSeek(jointExDataPtrTbl);
-                if (jointExDataPtrTbl)
-                    uint64 jointExDataPtr[count];
             }
-        } jointExGroupData;
-    }
-    
-    FSeek(Header.extraJointDataPtr);
-    if (Header.extraJointDataPtr) {
-        struct {
-            uint64 extraJointTbl;
-            uint32 extraJointCount;
-            if (extraJointCount && extraJointTbl) {
-                FSeek(extraJointTbl);
-                for(i=0; i<extraJointCount; i++) {
-                    struct extraJoint {
-                        StringRead parentName;
-                        StringRead jointName;
-                        uint32 parentNameHash;
-                        uint32 jointNameHash;
-                        uint32 symmetryNameHash;
-                        uint16 attrFlags;
-                        uint16 padding;
-                        if (Header.version == 19)
-                            uint64 ukn;
-                    } ExtraJoint <read=ReadExtraJoint>;
+            FSeek(startof(empty)+2);
+        } jointMaskGroup[Header.jointMaskGroupCount] <optimize=false>;
+    } jointMaskGroups;
+}
+
+enum <ubyte> JointExType
+{
+    JointExType_None = 0,
+    JointExType_Rotation = 1,
+    JointExType_RotToScale = 2,
+    JointExType_RotToScaleEx = 3,
+    JointExType_RotToTrans = 4,
+    JointExType_RotToTransEx = 5,
+    JointExType_Finger = 6,
+    JointExType_Thumb = 7,
+    JointExType_RotToRot = 8,
+    JointExType_RotToRotEx = 9,
+    JointExType_Limit = 10,
+    JointExType_PointConstraint = 11,
+    JointExType_ParentConstraint = 12,
+    JointExType_BsplineConstraint = 13,
+    JointExType_RemapValue = 14,
+    JointExType_MultiRemapValue = 15,
+    JointExType_Rotation2 = 16,
+};
+
+FSeek(Header.jointExGroupDataPtr);
+if (Header.jointExGroupDataPtr) {
+    struct {
+        uint64 jointExTypeTbl;
+        uint64 jointExLodTbl;
+        uint64 jointExDataPtrTbl;
+        uint32 count;
+        if (count) {
+            FSeek(jointExTypeTbl);
+            if (jointExTypeTbl)
+                JointExType jointExType[count];
+            FSeek(jointExLodTbl);
+            if (jointExLodTbl)
+                uchar jointExLod[count];
+            FSeek(jointExDataPtrTbl);
+            if (jointExDataPtrTbl)
+                uint64 jointExDataPtr[count];
+
+            struct  {
+                for (i = 0; i < count; ++i) {
+                    FSeek(jointExDataPtr[i]);
+                    struct {
+                        local JointExType itemType = jointExType[i];
+                        if (itemType == 1) {
+                            uint32 hash;
+                            uint32 hash2;
+                            ubyte flags;
+                            ubyte uknNum;
+                            uint16 null;
+                            vec3 rotation;
+                        } else if (itemType == 4) {
+                            uint32 hash;
+                            uint hash2;
+                            uint num;
+                            uint flags;
+                            uint data[24];
+                        } else if (itemType == 5) {
+                            uint32 hash;
+                            uint hash2;
+                            uint num;
+                            uint flags;
+                            uint data[36];
+                        } else if (itemType == 6) {
+                            uint32 hash;
+                            uint num;
+                            uint hash2;
+                            uint flags;
+                            uint data[88];
+                        } else if (itemType == 7) {
+                            uint32 hash;
+                            uint num;
+                            uint hash2;
+                            uint flags;
+                            uint data[76];
+                        } else if (itemType == 9) {
+                            uint32 hash;
+                            uint hash2;
+                            uint num;
+                            uint flags;
+                            uint data[36];
+                        } else if (itemType == 14) {
+                            uint32 hash;
+                            uint data[51];
+                        } else if (itemType == 16) {
+                            vec4 q1;
+                            vec4 q2;
+                            uint hash1;
+                            uint hash2;
+                            uint ukn;
+                            vec3 vec;
+                        }
+                    } JointExItem <read=Str("type = %d", itemType)>;
                 }
+            } JointExData;
+        }
+
+    } jointExGroupData;
+}
+
+FSeek(Header.extraJointDataPtr);
+if (Header.extraJointDataPtr) {
+    struct {
+        uint64 extraJointTbl;
+        uint32 extraJointCount;
+        if (extraJointCount && extraJointTbl) {
+            FSeek(extraJointTbl);
+            for(i=0; i<extraJointCount; i++) {
+                struct extraJoint {
+                    OffsetWString parentName(0);
+                    OffsetWString jointName(0);
+                    uint32 parentNameHash;
+                    uint32 jointNameHash;
+                    uint32 symmetryNameHash;
+                    uint16 attrFlags;
+                    uint16 padding;
+                    if (Header.version >= 19)
+                        uint64 ukn;
+                } ExtraJoint <read=ReadExtraJoint>;
             }
-        } extraJoints;
-    }
-    
+        }
+    } extraJoints;
+}
+
+if (exists(Header.ikMotionDataPtr) && Header.ikMotionDataPtr && Header.ikMotionCount > 0) {
     FSeek(Header.ikMotionDataPtr);
-    if (Header.ikMotionDataPtr && Header.ikMotionDataPtr < FileSize()) {
+    struct {
         uint32 ikJointNameHash;
         uint32 fkJointNameHash;
         byte ikType;
         char descendantLevelFromIkHandle;
         byte ikDirection;
         byte ikUpvector;
-    }
+    } IKMotionData[Header.ikMotionCount];
+}
 
+if (exists(Header.symmetryMirrorDataPtr)) {
     FSeek(Header.symmetryMirrorDataPtr);
     if (Header.symmetryMirrorDataPtr && Header.symmetryMirrorDataPtr < FileSize()) {
         struct symmetryMirrorData {
             uint64 mirrorJointHashTbl;
             uint64 mirrorTbl;
             int mirrorTblCount;
-            struct SymmetryMirrorData DefaultMirror;
-            
+            ubyte attributes;
+            ubyte attributes;
+            ubyte attributes;
+            ubyte attributes;
+
             FSeek(mirrorJointHashTbl);
-            if (mirrorJointHashTbl)
+            if (mirrorJointHashTbl) {
                 uint mirrorJointHash[mirrorTblCount];
-    
+            }
+
             FSeek(mirrorTbl);
-            if (mirrorTbl)
-                struct SymmetryMirrorData mirror[mirrorTblCount] <optimize=false>;
+            if (mirrorTbl) {
+                struct {
+                    ubyte one, two;
+                    if (Header.version >= 28) {
+                        ubyte attributes;
+                    }
+                } Pairs[mirrorTblCount] <read=Str("%d %d", one, two), optimize=true>;
+            }
         } SymmetryMirrorData;
     }
 }
 
-    wstring ReadExtraJoint(extraJoint &e) {
-        return e.parentName.String + " -> " + e.jointName.String;
-    }
+if (exists(Header.skeletonMaskPtr) && Header.skeletonMaskPtr && Header.skeletonMaskPtr != Header.symmetryMirrorDataPtr) {
+    FSeek(Header.skeletonMaskPtr);
+    struct {
+        uint64 dataOffset;
+        uint32 count;
+        uint32 hashes[count];
+    } SkeletonMaskData;
+}
+
+if (exists(Header.SymmetryMirrorData2Ptr) && Header.SymmetryMirrorData2Ptr) {
+    FSeek(Header.SymmetryMirrorData2Ptr);
+    symmetryMirrorData SymmetryMirrorData2;
+}
+
+wstring ReadExtraJoint(extraJoint &e) {
+    return e.parentName.str + " -> " + e.jointName.str;
+}

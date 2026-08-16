@@ -1,0 +1,79 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: WRAP.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.wrap.*
+//  ID Bytes: 57 52 41 50
+//   History:
+//------------------------------------------------
+
+struct WrapHeader {
+    uint magic;
+    uint32 version;
+    uint32 ukn;
+    uint32 fileLength;
+    uint32 entryCount;
+    uint32 dataItemSize;
+    uint32 dataSize;
+    uint32 indexSize;
+    uint32 num4;
+    uint32 flags <format=binary>;
+    uint64 sectionHeaderOffset;
+    uint64 dataOffset;
+    uint64 indexOffset;
+} Header;
+
+FSeek(Header.sectionHeaderOffset);
+struct {
+    uint32 count;
+    uint32 offset;
+    uint64 dataHeaderOffset;
+} Entries[Header.entryCount] <optimize=false>;
+
+
+local int i = 0;
+for (i = 0; i < Header.entryCount; i++) {
+    FSeek(Entries[i].dataHeaderOffset);
+    struct {
+        struct {
+            uint32 count, size, byteOffset, indexOffset;
+        } parts[Entries[i].count] <read=Str("Count: %d", count)>;
+    } DataHeader;
+}
+
+
+typedef struct DataBlock(int i, int k) {
+    local int entry = i;
+    local int part = k;
+    FSeek(Header.dataOffset + DataHeader[entry].parts[part].byteOffset);
+    struct {
+        //uint32 intOrFloat;
+        uint16 v1, v2;
+        //hfloat v2;
+        local int weightCount = (Header.dataItemSize - 4) / 12;
+        struct indexData {
+            hfloat x, y, z, weight;
+            uint32 index;
+        } Influences[weightCount] <read=Str("%d %f:  %f %f %f", index, weight, x, y, z)>;
+    } DataBlocks[DataHeader[entry].parts[part].count] <read=Str("%d %d", v1, v2), optimize=false>;
+};
+
+FSeek(Header.dataOffset);
+struct {
+    local int k = 0;
+    for (i = 0; i < Header.entryCount; i++) {
+        for (k = 0; k < Entries[i].count; k++) {
+            DataBlock data(i, k) <read=Str("Entry %d, Part %d", entry, part)>;
+        }
+    }
+} Data;
+
+FSeek(Header.indexOffset);
+struct {
+    uint16 a, b, c;
+    uint16 padding <hidden=true>;
+} IndexData[Header.indexSize / 8] <read=Str("%d %d %d", a, b, c)>;

@@ -1,0 +1,29 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_CLSP
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category:
+// File Mask: *.clsp.*
+//  ID Bytes: 43 4C 53 50
+//   History:
+//------------------------------------------------
+
+uint32 magic;
+uint32 presetCount;
+uint64 dataOffset;
+FSeek(dataOffset);
+struct {
+	int shapeType;
+	uint hash1;
+	uint hash2;
+	int null;
+	int flags;
+	int flags2;
+	int null;
+	int null;
+
+	float shapeValues[20];
+} Presets[presetCount] <read=Str("Type %d [%u]", shapeType, hash1)>;

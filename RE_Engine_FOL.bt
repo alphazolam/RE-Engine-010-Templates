@@ -1,0 +1,98 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: FOL.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.fol.*
+//  ID Bytes: 46 4F 4C 00
+//   History:
+//------------------------------------------------
+// handled: version 3
+
+uint magic;
+uint32 version;
+uint32 groupCount;
+
+typedef struct AABB {
+    float x1;
+    float y1;
+    float z1;
+    float x2;
+    float y2;
+    float z2;
+};
+
+if (version == 0) {
+    FSkip(4);
+    uint32 ukn;
+    FSkip(12);
+    struct {
+        uint64 meshOffset, meshOffset2;
+        uint64 matOffset, padding;
+        local uint64 pos = FTell();
+        FSeek(meshOffset);
+        wstring mesh;
+        FSeek(matOffset);
+        wstring material;
+        FSeek(pos);
+    } Groups[groupCount] <read=mesh, optimize=false>;
+
+    return;
+} else {
+    AABB bounds;
+    FSkip(4);
+}
+
+uint64 dataOffset;
+
+FSeek(dataOffset);
+typedef struct FoliageGroupInfo {
+	uint32 instanceCount;
+	AABB bounds;
+	uint32 ukn;
+    if (version > 3) {
+        float uknFlt1;
+        float uknFlt2;
+    }
+	uint64 transformsOffset;
+	uint64 meshOffset;
+	uint64 matOffset;
+};
+
+FoliageGroupInfo foliageGroups[groupCount] <optimize=true>;
+
+typedef struct vec3 {
+    float x, y, z;
+    FSkip(4);
+};
+
+typedef struct quaternion {
+    float x, y, z, w;
+};
+
+typedef struct {
+	vec3 pos;
+    quaternion rot;
+	vec3 scale;
+} Transform <optimize=true>;
+
+struct FolGroup(int index) {
+    FSeek(foliageGroups[index].transformsOffset);
+    Transform transforms[foliageGroups[index].instanceCount];
+    FSeek(foliageGroups[index].meshOffset);
+    wstring mesh;
+    FSeek(foliageGroups[index].matOffset);
+    wstring material;
+};
+
+struct FoliageData {
+    local int i;
+    for (i = 0; i < groupCount; i++) {
+        FolGroup group(i);
+    }
+};
+
+FoliageData Data;

@@ -1,0 +1,49 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: fbxskel.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.fbxskel.*
+//  ID Bytes: [+4] 73 6B 6C 6E
+//   History:
+//------------------------------------------------
+
+#include "common.bt";
+
+struct {
+	uint version;
+	uint magic;
+	FSkip(8);
+	uint64 dataOffset;
+	uint64 boneLookupOffset;
+	uint64 boneCount;
+	FSkip(8);
+} HEADER;
+
+FSeek(HEADER.dataOffset);
+struct {
+	OffsetWString name(0);
+	uint nameHash;
+	int16 parentIndex;
+	int16 symmetryIndex;
+	if (HEADER.version >= 5) {
+		vec4 rotation;
+		vec3 position;
+		vec3 scale;
+		uint num;
+		FSkip(4);
+	} else {
+		vec3p pos;
+		vec4 rotation;
+		vec3p scale;
+	}
+} Bones[HEADER.boneCount]<optimize=false, read=name.str>;
+
+FSeek(HEADER.boneLookupOffset);
+struct {
+	uint nameHash;
+	uint index;
+} BoneLookup[HEADER.boneCount] <read=Str("[%u] %s", nameHash, Bones[index].name.str)>;

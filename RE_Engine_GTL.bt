@@ -1,0 +1,89 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: GTL.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.gtl.*
+//  ID Bytes: 47 54 4C 0A
+//   History:
+//------------------------------------------------
+
+#include "common.bt";
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+struct {
+	uint magic;
+	uint32 version;
+	uint ukn1;
+	uint count1;
+	uint indicesCount;
+	uint count3;
+	uint count4;
+	uint padding;
+	uint64 indicesOffset;
+	uint64 heightRangesOffset;
+	uint64 dataOffset;
+} Header;
+
+// values/sizes are derived from a parent .grnd file
+if (version == 858718223) {
+	// dd2: world00.grnd
+	local uint32 size1 = 33800;
+	local uint32 stride1 = 260;
+
+	local uint32 count2 = 132;
+	local uint32 size2 = 25344;
+	local uint32 stride2 = 768;
+
+	local uint32 count3 = 132;
+	local uint32 size3 = 16896;
+	local uint32 stride3 = 512;
+
+	local uint32 size4 = 4356;
+	local uint32 stride4 = 66;
+}
+
+FSeek(Header.indicesOffset);
+ubyte indices[Header.indicesCount];
+
+FSeek(Header.heightRangesOffset);
+struct {
+	float minHeight;
+	float maxHeight;
+} HeightRanges[Header.count4] <read=Str("%f - %f", minHeight, maxHeight)>;
+
+FSeek(Header.dataOffset);
+struct {
+	uint64 dataOffset;
+	local uint64 pos = FTell();
+	FSeek(dataOffset);
+	struct {
+		ubyte index;
+		ubyte b, c, d;
+		uint ukn[7];
+
+		struct {
+			uint16 heights[stride1 / 2]<read=Str("%f", this/65536.0f), optimize=true>;
+		} Heights[size1 / stride1] <optimize=true>;
+
+		struct {
+			struct { uint a, b, c, d; } row[count2 / 4];
+			FSkip(stride2 - count2 * 4);
+		} Values2[size2 / stride2] <optimize=true>;
+
+		struct {
+			struct { uint a, b; } row[count3 / 4];
+			FSkip(stride3 - count3 * 2);
+		} Values3[size3 / stride3] <optimize=true>;
+
+		struct {
+			uint8 row[stride4];
+		} Indices[size4 / stride4] <optimize=true>;
+
+	} Data;
+	FSeek(pos);
+} Items[Header.count3] <optimize=false, read=Str("%d (%d)", Data.index & 0x3, Data.index)>;

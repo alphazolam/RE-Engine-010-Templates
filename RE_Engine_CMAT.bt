@@ -1,0 +1,23 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_CMAT
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose: 
+//  Category: 
+// File Mask: *.cmat.*
+//  ID Bytes: 43 4D 41 54
+//   History: 
+//------------------------------------------------
+
+uint32 magic;
+uint32 attributeCount;
+uint64 fileSize;
+GUID MaterialGuid;
+
+if (attributeCount > 0) {
+	struct {
+		GUID guid;
+	} Attributes[attributeCount] <read=GUIDToString(guid)>;
+}

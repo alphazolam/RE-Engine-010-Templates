@@ -1,0 +1,35 @@
+
+typedef struct {
+    float x, y, z;
+    // for mcol >= 9018, this is the "next tree node entry to look at" linked list index, and if it's a leaf node, then it's the leaf / face index
+    uint32 index <read=ReadBvhIndex>;
+} IndexedVec3 <read=ReadIndexedVec3>;
+
+string ReadBvhIndex(uint32 index) {
+    if (index & 0x80000000) {
+        return index == 4294967295 ? "-1" : Str("L %d", index & ~0x80000000);
+    }
+    return Str("%d", index);
+}
+
+typedef struct BvhTree {
+    uint32 count;
+    uint32 leafCountDmc5; // only used in re7, dmc5, re2 non-rt
+    FSkip(8);
+    if (leafCountDmc5 > 0) {        
+        IndexedVec3 BvhRootEntryMin;
+        IndexedVec3 BvhRootEntryMax;
+    }
+    struct BvhTreeEntry {
+        IndexedVec3 min;
+        IndexedVec3 max;
+    } bounds[count] <read=Str("%s %d:          %f %f %f", ReadBvhIndex(min.index), max.index, min.x, min.y, min.z)>;
+};
+
+string ReadIndexedVec3(IndexedVec3 &v) {
+    return Str("%d:               %f %f %f", (v.index == 2147483647 ? -1 : v.index), v.x, v.y, v.z);
+}
+
+string ReadBvhTreeEntry(BvhTreeEntry &v) {
+    return Str(v.min.isLeaf ? "L %d %d:            %f %f %f" : "%d %d:            %f %f %f", v.min.index, v.max.index, v.min.x, v.min.y, v.min.z);
+}

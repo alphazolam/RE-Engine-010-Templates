@@ -1,0 +1,56 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: GRND.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.grnd.*
+//  ID Bytes: 47 52 4E 44
+//   History:
+//------------------------------------------------
+
+#include "common.bt";
+
+struct {
+	uint magic;
+	uint32 version;
+	float min_x;
+	float min_z;
+	float max_x;
+	float max_z;
+	float min_y;
+	float max_y;
+	float uknFlt;
+	uint gtlCount;
+	uint uknCount;
+	uint dataCount;
+	uint ukn2;
+	uint ukn3;
+
+	float start_x, start_z;
+
+	uint x, z;
+	uint64 stringOffset;
+	uint64 dataOffset;
+} Header;
+
+FSeek(Header.stringOffset);
+struct {
+	OffsetWString str(0);
+} TextureLists[Header.gtlCount] <optimize=false, read=str.str>;
+
+FSeek(Header.dataOffset);
+struct {
+	uint index;
+	uint ukn1;
+	uint ukn2;
+	uint ukn3;
+	uint valueSize;
+	uint valueCount;
+	uint totalBlockSize;
+	uint paddedStrideBytes;
+	uint mask;
+	uint ukn9;
+} GtlContentHeaders[Header.dataCount];

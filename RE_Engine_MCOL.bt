@@ -1,0 +1,346 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: MCOL.bt
+//   Authors: shadowcookie
+//   Version: 0.1
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.mcol.*|*.terr.*
+//  ID Bytes: 4D 43 4F 4C,54 45 52 52
+//   History:
+//------------------------------------------------
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+#include "common.bt";
+#include "RE_BVH_common.bt";
+
+if (version == 2) {
+    Printf("Unsupported file version!\n");
+}
+
+// via.dynamics.RigidBodyMeshResourceHolder
+typedef struct RBMHeader { // rmesh
+	uint32 magic;
+    uint32 ukn;
+    uint64 bvhOffset;
+    // used by via.dynamics.MeshShape
+    // should / can contain:
+    // vertices (vec3)
+    // triangles (3x vec3)
+};
+
+// via.physics.CollisionMeshResourceHolder
+typedef struct MCOLHeader {
+	uint32 magic;
+    uint32 bvhSize;
+    uint stringCount;
+    uint padding;
+    if (version == 2) {
+        local uint64 bvhOffset = startof(this) + 16;
+    } else {
+        uint64 mcolStringTableOffset;
+        local uint64 bvhOffset = startof(this) + 32;
+    }
+};
+
+// via.physics.TerrainResourceHolder
+typedef struct TERRHeader {
+	uint32 magic;
+    uint32 bvhSize;
+    uint count;
+    uint guidCount;
+
+    if (version == 4) {
+        local uint64 bvhOffset = startof(this) + 16;
+    } else {
+        GUID guid;
+        uint64 offset1;
+        uint64 guidOffset;
+        local uint64 bvhOffset = startof(this) + 48;
+    }
+};
+
+local int isMcol = (ReadUInt() == 0x4c4f434d);
+local int isTerr = (ReadUInt() == 0x52524554);
+local int isRmesh = (ReadUInt() == 0x204D4252);
+if (isMcol) {
+	MCOLHeader Header;
+} else if (isRmesh) {
+	RBMHeader Header;
+} else if (isTerr) {
+    TERRHeader Header;
+}
+
+if (exists(Header.bvhSize) && Header.bvhSize == 0) {
+    Exit(0);
+}
+
+FSeek(Header.bvhOffset);
+struct BVHHeader {
+    uint32 magic;
+    if (isRmesh) {
+        uint32 uknCount1;
+        uint32 uknCount2;
+        uint32 uknCount3;
+        uint32 verticesCount;
+        uint32 rmeshObject2Count;
+        uint32 rmeshObject3Count;
+        uint32 stringCount;
+        uint32 spheresCount;
+
+        uint32 capsulesCount;
+        uint64 boxesCount;
+
+        uint64 verticesOffset;
+        uint64 rmeshObject2Offset;
+        uint64 rmeshObject3Offset;
+
+        uint64 stringTableOffset;
+        uint64 spheresOffset;
+        uint64 capsulesOffset;
+        uint64 boxesOffset;
+        uint64 uknOffsetPadding;
+        local int treeDataSize = 1;
+        local int treeDataOffset = version == 10008 ? FTell() + 16 : FTell() - Header.bvhOffset;
+    } else {
+        uint32 verticesCount;
+        uint32 indicesCount;
+        uint32 uknCount1;
+        uint32 stringCount;
+        if (version > 4) { // 2 = mcol, 4 = terr (re7)
+            uint32 spheresCount;
+            uint32 capsulesCount;
+            uint32 boxesCount;
+            uint32 uknCount2;
+        }
+
+        if (version > 25000) {
+            uint64 uknPragmata;
+        }
+        uint32 treeDataSize;
+        uint64 treeDataOffset;
+        uint64 verticesOffset;
+        uint64 indicesOffset;
+        uint64 uknOffset;
+
+        uint64 stringTableOffset;
+        if (version > 4) {
+            uint64 spheresOffset;
+            uint64 capsulesOffset;
+            uint64 boxesOffset;
+
+            uint64 uknOffsetPadding;
+            if (version > 29000) {
+                uint64 uknOffsetPadding;
+            }
+        }
+    }
+} bvh;
+
+if (!isRmesh || version == 10008) {
+    vec3p minBounds;
+    vec3p maxBounds;
+}
+
+if (bvh.treeDataSize > 0) {
+    FSeek(startof(bvh) + bvh.treeDataOffset);
+    BvhTree Tree;
+}
+
+if (bvh.verticesCount > 0) {
+    FSeek(startof(bvh) + bvh.verticesOffset);
+    struct {
+	    vec3p vertex[bvh.verticesCount] <read=Str("%f %f %f", x, y, z)>;
+    } Vertices;
+}
+
+if (exists(bvh.rmeshObject2Offset) && bvh.rmeshObject2Count > 0) {
+    FSeek(startof(bvh) + bvh.rmeshObject2Offset);
+    struct {
+        uint index1;
+        uint index2;
+        uint index3;
+        uint positionIndex1;
+        uint positionIndex2;
+        uint positionIndex3;
+        uint positionIndex4;
+        uint positionIndex5;
+        uint positionIndex6;
+        uint index10;
+        uint index11;
+        uint index12;
+        int indicesIndex1;
+        int indicesIndex2;
+        int indicesIndex3;
+        uint typeOrFlags;
+        if (version > 10008) {
+            float floats[7];
+            uint zero;
+        }
+    } RmeshIndices[bvh.rmeshObject2Count] <read=Str("[%d] %d", typeOrFlags, index3), optimize=true>;
+}
+
+if (exists(bvh.rmeshObject3Offset) && bvh.rmeshObject3Count > 0) {
+    FSeek(startof(bvh) + bvh.rmeshObject3Offset);
+    vec3p RmeshPositions[bvh.rmeshObject3Count];
+}
+
+if (exists(bvh.indicesCount) && bvh.indicesCount > 0) {
+    FSeek(startof(bvh) + bvh.indicesOffset);
+    struct {
+        struct BvhIndices {
+            uint32 ukn0;
+            if (version >= 3017) {
+                uint32 layerIndex; // corresponds to a string index in the string table
+            }
+            if (version >= 13008) {
+                uint32 mask;
+            }
+            if (version >= 20021) {
+                uint32 partId;
+            }
+
+            uint32 ukn1;
+            uint32 ukn2;
+            uint32 ukn3;
+            uint32 ukn4;
+            uint32 ukn5;
+            uint32 ukn6;
+            uint32 ukn7;
+
+            uint32 posIdx1;
+            uint32 posIdx2;
+            uint32 posIdx3;
+            int32 edgeIdx1;
+            int32 edgeIdx2;
+            int32 edgeIdx3;
+            if (version < 3017) {
+                uint32 layerIndex;
+            }
+            if (version < 13008) {
+                uint32 ukn;
+            }
+        } data[bvh.indicesCount] <read=Str("%d  (%d %d %d)", layerIndex, posIdx1, posIdx2, posIdx3), optimize=true>;
+    } Indices;
+}
+
+string ReadBvhIndices(BvhIndices &entry)
+{
+    if (exists(entry.partId)) {
+        return Str("%d:%d - %x  (%d %d %d)", layerIndex, partId, mask, posIdx1, posIdx2, posIdx3);
+    }
+
+    if (exists(entry.mask)) {
+        return Str("%d - %x  (%d %d %d)", layerIndex, mask, posIdx1, posIdx2, posIdx3);
+    }
+
+    return Str("%d  (%d %d %d)", layerIndex, posIdx1, posIdx2, posIdx3);
+}
+
+if (version >= 3017) {
+    if (bvh.spheresCount > 0) {
+        FSeek(startof(bvh) + bvh.spheresOffset);
+        struct {
+            uint ukn0;
+            uint layerIndex;
+            uint mask;
+            uint partId;
+            vec4 vec;
+        } Spheres[bvh.spheresCount] <read=Str("%d:%d %x / %f %f %f %f", layerIndex, partId, mask, vec.x, vec.y, vec.z, vec.w)>;
+    }
+
+    if (bvh.capsulesCount > 0) {
+        FSeek(startof(bvh) + bvh.capsulesOffset);
+        struct {
+            uint ukn0;
+            uint layerIndex;
+            uint mask;
+            uint partId;
+            Capsule capsule;
+        } Capsules[bvh.capsulesCount] <read=Str("%d:%d %x / %f %f %f", layerIndex, partId, mask, capsule.p0.x, capsule.p0.y, capsule.p0.z)>;
+    }
+
+    if (bvh.boxesCount > 0) {
+        FSeek(startof(bvh) + bvh.boxesOffset);
+        struct {
+            uint ukn0;
+            uint layerIndex;
+            uint mask;
+            uint partId;
+            OBB box;
+        } Boxes[bvh.boxesCount] <read=Str("%d:%d %x / %s", layerIndex, partId, mask, ReadMat4(box.coord))>;
+    }
+}
+
+if (bvh.stringTableOffset > 0) {
+    FSeek(startof(bvh) + bvh.stringTableOffset);
+    if (isRmesh) {
+        struct {
+            OffsetWString name(startof(bvh));
+            uint64 empty;
+            uint64 empty;
+            uint64 empty;
+            uint64 empty;
+            uint64 empty;
+        } StringTable[bvh.stringCount] <read=(exists(name[0].str) ? name[0].str : "<empty>"), optimize=false>;
+    } else {
+        if (version <= 4) { // re7: terr.4 or mcol.2
+            struct {
+                uint32 index;
+                uint32 zero;
+                uint32 zero;
+                uint32 zero;
+            } LayerIndices[bvh.stringCount] <read=index>;
+        } else {
+            struct {
+                OffsetWString str(startof(bvh))[bvh.stringCount * 2];
+            } StringTable <read=(exists(str[0].str) ? str[0].str : "<empty>")>;
+        }
+    }
+}
+
+if (isMcol) {
+    // gets mapped into a via.physics.MaterialInfo array (physics material - ID + 3x attributes)
+    // mcol string table here is identical to the bvh's inner string table
+    if (exists(Header.mcolStringTableOffset)) {
+        FSeek(Header.mcolStringTableOffset);
+        struct {
+            OffsetWString str(0)[bvh.stringCount * 2];
+        } MCOLStringTable <read=(exists(str[0].str) ? str[0].str : "<empty>")>;
+    }
+} else if (isTerr && version > 4) {
+    if (Header.count > 0) {
+        FSeek(Header.offset1);
+        struct {
+            uint64 unknOffset;
+            uint32 guid1Count;
+            uint32 guid2Count;
+            GUID null2;
+            uint64 guidsOffset1;
+            uint64 guidsOffset2;
+
+            local uint64 pos = FTell();
+            if (guid1Count > 0) {
+                FSeek(guidsOffset1);
+                struct {
+                    GUID guid;
+                } GUIDs1 [guid1Count];
+            }
+            if (guid2Count > 0) {
+                FSeek(guidsOffset2);
+                struct {
+                    GUID guid;
+                } GUIDs2 [guid2Count];
+            }
+            FSeek(pos);
+        } TerrainTypes[Header.count] <optimize=false>;
+    }
+    if (Header.guidCount > 0) {
+        FSeek(Header.guidOffset);
+        struct {
+            GUID guid;
+        } Guids[Header.guidCount];
+    }
+}

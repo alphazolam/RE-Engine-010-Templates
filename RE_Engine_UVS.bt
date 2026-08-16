@@ -4,22 +4,25 @@
 //      File: RE_UVS.bt
 //   Authors: alphaZomega
 //   Version: 0.2
-//   Purpose: 
+//   Purpose:
 //  Category: RE Engine
 // File Mask: *.uvs.*
-//  ID Bytes: 
+//  ID Bytes:
 //   History: Nov 20 2021
 //------------------------------------------------
 
 local uint i <hidden=true>, j <hidden=true>, k <hidden=true>;
 
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
 struct uvHeader {
   unsigned int magic;
   unsigned int textureNum;
   unsigned int sequenceNum;
   unsigned int patternNum;
-  unsigned int attribute;
-  unsigned int reserve;
+  if (version >= 7) {
+    unsigned int attribute;
+    unsigned int reserve;
+  }
   uint64 texturePtr;
   uint64 sequencePtr;
   uint64 patternPtr;
@@ -30,6 +33,19 @@ struct uvTextureData {
   unsigned int uniqueID;
   unsigned int padding;
   wchar_t path[4];
+};
+
+struct uvTexture {
+    local uint index = i;
+    uint64 mStateHolder;
+    uint64 pathCharOffset;
+    int64 mTextureHandleTbl[3];
+    if (exists(Header.stringPtr)) {
+
+    }
+    FSeek(Header.stringPtr + pathCharOffset*2);
+    wstring name;
+    FSeek(startof(mTextureHandleTbl[2])+8);
 };
 
 struct uvSequenceData {
@@ -53,17 +69,7 @@ struct uvPatternData
     }
 };
 
-struct uvTexture {
-    local uint index = i;
-    uint64 mStateHolder;
-    uint64 mDataPtr;
-    int64 mTextureHandleTbl[3];
-    FSeek(Header.stringPtr + mDataPtr*2);
-    wstring name;
-    FSeek(startof(mTextureHandleTbl[2])+8);
-};
-
-    wstring ReadUVTexture(uvTexture &t) {return t.name;} //{return Strings.String[t.index].str;}
+wstring ReadUVTexture(uvTexture &t) {return t.name;} //{return Strings.String[t.index].str;}
 
 
 struct uvPattern {
@@ -71,14 +77,14 @@ struct uvPattern {
     uvPatternData PatternData;
 };
 
-    wstring ReadUVPatternData(uvPatternData &u) { if (exists(Strings.String[u.textureIndex])) return Strings.String[u.textureIndex].str; return ""; }
+wstring ReadUVPatternData(uvPatternData &u) { if (exists(Strings.String[u.textureIndex])) return Strings.String[u.textureIndex].str; return ""; }
 
 
 struct uvSequence {
-    uint32 mDataPtr;
+    uint32 patternCount;
     uint32 mPatternTbl;
     FSeek(Header.patternPtr + mPatternTbl*32);
-    uvPatternData PatternData[mDataPtr] <optimize=false, read=ReadUVPatternData>;
+    uvPatternData PatternData[patternCount] <optimize=false, read=ReadUVPatternData>;
     FSeek(startof(mPatternTbl)+4);
 };
 
@@ -88,12 +94,6 @@ typedef struct { wstring str; } STRING <read=ReadSTRING>;
 //start of file:
 uvHeader Header;
 
-FSeek(Header.stringPtr);
-if (Header.patternNum)
-struct {
-    for (i=0; i<Header.textureNum; i++)
-        STRING String;
-} Strings;
 FSeek(Header.texturePtr);
 if (Header.textureNum)
     struct {
@@ -102,12 +102,19 @@ if (Header.textureNum)
     } Textures;
 
 
-FSeek(Header.patternPtr);
-if (Header.patternNum)
-    uvPatternData Pattern[Header.patternNum] <optimize=false, hidden=true>;
-
 FSeek(Header.sequencePtr);
 if (Header.sequenceNum)
     struct {
         uvSequence Sequence[Header.sequenceNum] <optimize=false>;
     } Sequences;
+
+FSeek(Header.patternPtr);
+if (Header.patternNum)
+    uvPatternData Pattern[Header.patternNum] <optimize=false, hidden=true>;
+
+FSeek(Header.stringPtr);
+if (Header.patternNum)
+struct {
+    for (i=0; i<Header.textureNum; i++)
+        STRING String;
+} Strings;

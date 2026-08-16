@@ -1,0 +1,138 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: GML.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.gml.*
+//  ID Bytes: 47 4D 4C 00
+//   History:
+//------------------------------------------------
+
+#include "common.bt";
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+struct {
+	uint magic;
+	uint32 version;
+	uint dataCount;
+	uint texCount;
+	if (version != 858718217) {
+		uint64 padding;
+	}
+	uint64 offsetsOffset;
+	uint64 dataOffsetsOffset;
+} Header;
+
+FSeek(Header.offsetsOffset);
+uint64 textureOffsets[Header.texCount];
+
+FSeek(Header.dataOffsetsOffset);
+uint64 dataOffsets[Header.dataCount];
+
+local int i = 0;
+local int k = 0;
+struct {
+	for (i = 0; i < Header.texCount; i++)
+	{
+		FSeek(textureOffsets[i]);
+		struct {
+			OffsetWString albedo(0);
+			OffsetWString normal(0);
+			float x;
+			float x2;
+			float y;
+			float y2;
+			float z;
+			float z2;
+			float flt1;
+			float flt2;
+			float flt3;
+			float flt4;
+			float flt5;
+			float flt6;
+		} Texture<optimize=false, read=albedo.str>;
+	}
+} Textures;
+
+struct {
+	for (i = 0; i < Header.dataCount; i++)
+	{
+		FSeek(dataOffsets[i]);
+		struct {
+			int countX;
+			int countZ;
+			int lodCount;
+			int ukn;
+			int bufferCount;
+			int uknNum;
+			int bufferCount2;
+			int uknNum2;
+			if (bufferCount > 0) {
+				uint64 offsets[lodCount * bufferCount];
+			}
+			if (bufferCount2 > 0) {
+				uint64 offsets2[lodCount * bufferCount2];
+			}
+			struct {
+				for (k = 0; k < lodCount * bufferCount; k++) {
+					FSeek(offsets[k]);
+					struct {
+						uint64 offset;
+						uint rowSize;
+						uint fullSize;
+
+						FSeek(offset);
+						uint data[fullSize / 4];
+					} InnerDataItem <read=Str("%d / %d", rowSize, fullSize), optimize=false>;
+				}
+			} InnerData;
+
+			struct {
+				for (k = 0; k < lodCount * bufferCount2; k++) {
+					FSeek(offsets2[k]);
+					struct {
+						uint64 offset;
+						uint rowSize;
+						uint fullSize;
+
+						FSeek(offset);
+						uint data[fullSize / 4];
+					} InnerDataItem <read=Str("%d / %d", rowSize, fullSize), optimize=false>;
+				}
+			} InnerData2;
+		} Data<optimize=false>;
+	}
+} Data;
+
+// FSeek(Header.stringOffset);
+// struct {
+// 	uint64 dataOffset;
+// 	local uint64 pos = FTell();
+// 	FSeek(dataOffset);
+// 	struct {
+// 		uint index;
+// 		uint ukn[7];
+// 		local int stride = GetStride(index);
+// 		local int stridePadded = stride + (stride%2);
+// 		struct {
+// 			uint16 hashes[stridePadded]<optimize=true>; // 16769
+// 		} Hashes[stride]<optimize=true>;
+
+// 		struct {
+// 			struct {
+// 				ubyte bytes[6];
+// 			} ValuesMaybe[stride - 2]<optimize=true>;
+// 		} ValuesMaybeIdk[55]<optimize=false>;
+
+// 		ubyte bytes[stride * stride];
+// 	} Data;
+// 	FSeek(pos);
+// } Items[Header.count3] <optimize=false, read=Data.index>;
+
+// struct {
+
+// } Strings[Header.dataCount] <optimize=false>;

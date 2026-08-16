@@ -1,0 +1,22 @@
+//------------------------------------------------
+//--- 010 Editor v16.0.4 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+uint rows;
+uint cols;
+
+local int i = 0;
+for (i = 0; i < rows; i++) {
+    struct {
+        float col[cols];
+    } row;
+}

@@ -1,0 +1,131 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: COCO.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.coco.*
+//  ID Bytes: 43 4F 43 4F
+//   History:
+//------------------------------------------------
+
+struct {
+	uint magic;
+	uint32 pathsOffset;
+	uint64 stringCount;
+} HEADER;
+
+uint64 treeCount;
+local int baseOffset = 16;
+uint64 treeOffset;
+
+FSeek(treeOffset + baseOffset);
+
+typedef struct vec3 { float x, y, z; };
+typedef struct vec4 { float x, y, z, w; };
+
+string ReadVec(vec3 &v) {
+    return Str("%f %f %f", v.x, v.y, v.z);
+}
+string ReadVec4(vec4 &v) {
+    return Str("%f %f %f %f", v.x, v.y, v.z, v.w);
+}
+
+typedef struct BvhTree {
+	uint64 count;
+	uint64 padding <hidden=1>;
+	struct {
+		float x, y, z;
+		uint32 index : 31;
+		uint32 leaf : 1;
+		float x1, y1, z1;
+		uint16 a1, b1;
+	} BvhEntry[count] <read=Str("%d - %f %f %f", index, x, y, z)>;
+};
+
+struct Entry;
+
+typedef struct Subheader {
+    uint32 count;
+    uint32 ukn1;
+	uint32 ukn2;
+	uint32 ukn4;
+	uint32 ukn5;
+	uint32 ukn6;
+};
+
+typedef struct Entry {
+	uint32 treeIndex;
+	uint32 nodeType;
+	uint64 ukn2;
+	uint64 ukn3;
+	uint64 ukn4;
+	uint64 colliderOffset;
+};
+
+typedef struct TreeEntryHeader {
+	uint32 count;
+	uint32 dataSize;
+	uint64 ukn;
+	uint64 nodesOffset;
+	uint64 entriesOffset;
+};
+
+
+local int dataPos = FTell();
+
+if (HEADER.stringCount > 0) {
+	FSeek(HEADER.pathsOffset);
+    struct {
+		uint64 offset;
+		FSeek(HEADER.pathsOffset + offset);
+		wstring str;
+		FSeek(startof(offset) + 8);
+	} Mcols[HEADER.stringCount] <read=str, optimize=false>;
+}
+
+typedef struct McolMatrix {
+    vec3 m1 <read=ReadVec>, m2 <read=ReadVec>, m3 <read=ReadVec>;
+    vec3 offset <read=ReadVec>;
+    uint32 mcolIndex;
+    local wstring path = Mcols[mcolIndex].str;
+};
+
+typedef struct OBB {
+    vec4 m1 <read=ReadVec4>, m2 <read=ReadVec4>, m3 <read=ReadVec4>, m4 <read=ReadVec4>;
+    vec4 extent <read=ReadVec4>;
+};
+
+if (treeCount > 0) {
+    FSeek(dataPos);
+    TreeEntryHeader TreeHeader[treeCount];
+	local int i = 0;
+	local int mcolCount = 0;
+	for (i = 0; i < treeCount; i++) {
+		struct {
+			FSeek(TreeHeader[i].nodesOffset + baseOffset);
+			Entry nodes[TreeHeader[i].count] <read=Str("%d  %d", nodeType, colliderOffset)>;
+			FSeek(TreeHeader[i].entriesOffset + baseOffset);
+			BvhTree tree;
+			mcolCount += TreeHeader[i].count;
+		} Tree;
+	}
+
+	for (i = 0; i < treeCount; i++) {
+		FSeek(Tree[i].nodes[0].colliderOffset + baseOffset);
+		// note: theoretically the node types could be mixed inside a single tree
+		// in practice, it's just one type (dd2), so simplifying it all with that in mind for now
+		if (Tree[i].nodes[0].nodeType == 6) {
+			struct {
+				McolMatrix  matrices[TreeHeader[i].count] <read=Str("%d - %s", mcolIndex, path), optimize=false>;
+			} Matrices;
+		} else if (Tree[i].nodes[0].nodeType == 5) {
+			struct {
+				OBB matrices[TreeHeader[i].count];
+			} Matrices;
+		}
+
+	}
+}

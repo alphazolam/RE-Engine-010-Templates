@@ -1,0 +1,23 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: AIMA.bt
+//   Authors: shadowcookie
+//   Version: 0.1
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.aimapattr.*
+//  ID Bytes: 41 49 4D 41
+//   History:
+//------------------------------------------------
+
+#include "common.bt";
+
+uint magic;
+uint mask1;
+uint mask2;
+
+struct {
+    FixedWString attribute <read=str>;
+    uint mask <format=binary>;
+} attributes[64] <optimize=false, read=attribute.str>;

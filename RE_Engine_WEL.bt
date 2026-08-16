@@ -1,0 +1,36 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: MCOL.bt
+//   Authors: shadowcookie
+//   Version: 0.1
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.wel.*
+//   History:
+//------------------------------------------------
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+wstring bnkPath;
+
+FSeek(512);
+uint32 count;
+
+struct {
+    uint32 triggerId;
+    uint32 eventId;
+    uint32 jointHash;
+    int32 gameObjectHash;
+
+    ubyte tracking;
+    ubyte rotation;
+    int16 ukn4;
+    int16 ukn5;
+    int16 ukn6;
+
+    ubyte ukn9;
+    int16 data1[11];
+    ubyte ukn9;
+    uint16 data3[7];
+} Event[count] <read=Str("%u / %u", triggerId, eventId)>;

@@ -7,7 +7,7 @@
 //   Purpose: Parsing RE Engine textures
 //  Category: Modding
 // File Mask: *.*
-//  ID Bytes: 54 45 58 00 // TEX 
+//  ID Bytes: 54 45 58 00 // TEX
 //   History: from RE2_tex.bt
 //------------------------------------------------
 LittleEndian();
@@ -15,6 +15,7 @@ LittleEndian();
 local uint32 i <hidden=true>, j <hidden=true>, mipWidth <hidden=true>, mipHeight <hidden=true>, mipSize <hidden=true>;
 local float divisor <hidden=true> = 1;
 local ubyte isNewVersion <hidden=1> = false;
+local ubyte isGDeflate <hidden=1> = false;
 
 typedef enum <UINT> {
 UNKNOWN = 0,
@@ -144,7 +145,7 @@ typedef struct {
 		struct {
             if (i+j < (int)Header.numImages * (int)Header.numMips - 1)
                 FSeek(Header.MipHeaders.MipHeader[i+j+1].mipOffs);
-            else 
+            else
                 FSeek(FileSize());
 		} Mip;
     }
@@ -152,10 +153,10 @@ typedef struct {
 
 typedef struct {
     mipWidth  = Header.width;
-    mipHeight = Header.height; 
+    mipHeight = Header.height;
     mipSize = (mipWidth * mipHeight) / divisor;
 	local uint mipsCounter <hidden=true> = 0;
-    while ((mipWidth > 4 || mipHeight > 4) && mipsCounter < Header.numMips) { 
+    while ((mipWidth > 4 || mipHeight > 4) && mipsCounter < Header.numMips) {
         struct {
             local int MipWidth = mipWidth;
             local int MipHeight = mipHeight;
@@ -163,9 +164,9 @@ typedef struct {
             local uint MipSize = mipSize;
             for (i=0; i<Header.slices; i++)
                 FSkip(mipSize);
-		    if (mipWidth > 4) 
+		    if (mipWidth > 4)
                 mipWidth = (int)(mipWidth / 2 + 0.5);
-		    if (mipHeight > 4) 
+		    if (mipHeight > 4)
                 mipHeight = (int)(mipHeight / 2 + 0.5);
             mipSize = (mipWidth * mipHeight) / divisor;
 			mipsCounter++;
@@ -177,7 +178,8 @@ typedef struct {
 struct{
     char   FourCC[4];
     uint32 version;
-    isNewVersion = (version != 10 && version != 11 && version != 6 && version != 190820018);
+    isNewVersion = (version != 8 && version != 10 && version != 11 && version != 6 && version != 190820018);
+    isGDeflate = (version == 241106027 || version == 251111100 || version == 250813143);
     uint16 width;
     uint16 height;
     ubyte  slices;
@@ -214,11 +216,24 @@ if (Header.format == 28 || Header.format == 29 || Header.format == 80 || Header.
 
 FSeek(Header.MipHeaders.MipHeader[0].mipOffs);
 struct {
+    if (isGDeflate) {
+        struct { uint32 size; uint32 offset; } CompressedHeaders[(int)Header.numImages * (int)Header.numMips];
+
+        local uint64 compressedDataOffset = FTell();
+        for (i = 0; i < (int)Header.numImages * (int)Header.numMips; i++) {
+            FSeek(compressedDataOffset + CompressedHeaders[i].offset);
+            struct  {
+                uint16 magicBytes;
+                uint16 tileCount;
+            } GDeflateHeader;
+        }
+    }
+
 	for (i = 0; i < (int)Header.numImages * (int)Header.numMips; i += Header.numMips) {
         if (i % Header.numMips == 0) {
 			if (i == 0)
 				IMG Image <open=true>;
-			else 
+			else
 				IMG Image;
         }
 	}

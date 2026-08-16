@@ -1,0 +1,87 @@
+typedef struct  {
+    uint32 len;
+    if (len > 0 && len < 200) {
+        wchar_t str[len];
+    }
+    align(4);
+} FixedWString <read=ReadFixedWString>;
+
+typedef struct {
+    float x;
+    float y;
+} vec2 <read=ReadVec2>;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} vec3 <read=ReadVec3>;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+    uint32 pad <hidden=true>;
+} vec3p <read=ReadVec3P>;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+    float w;
+} vec4 <read=ReadVec4>;
+
+typedef struct {
+    vec4 m1;
+    vec4 m2;
+    vec4 m3;
+    vec4 m4;
+} mat4 <read=ReadMat4>;
+
+typedef struct(long extraOffset) {
+    uint64 offset;
+    if (offset > 0) {
+        local long tell = FTell();
+        FSeek(offset + extraOffset);
+        wstring str;
+        FSeek(tell);
+    }
+} OffsetWString<read=ReadOffsetWString, optimize=false>;
+
+typedef struct {
+    SetBackColor(ReadUInt(FTell()));
+    uint8 r, g, b, a;
+} ColorRGBA<read=Str("R: %d G: %d G: %d A: %d", r, g, b, a)>;
+
+typedef struct {
+    vec3p p0;
+    vec3p p1;
+    float r;
+    vec3 padding <hidden=true>;
+} Capsule <read=ReadCapsule>;
+
+typedef struct {
+    mat4 coord;
+    vec3 extent;
+    uint32 padding <hidden=true>;
+} OBB <read=ReadOBB>;
+
+typedef struct {
+    vec3p min;
+    vec3p max;
+} AABB <read=Str("%s - %s", ReadVec3P(min), ReadVec3P(max))>;
+
+string ReadVec2(vec2 &v) { return Str("%f %f", v.x, v.y); }
+string ReadVec3(vec3 &v) { return Str("%f %f %f", v.x, v.y, v.z); }
+string ReadVec3P(vec3p &v) { return Str("%f %f %f", v.x, v.y, v.z); }
+string ReadFixedWString(FixedWString &wstr) { return exists(wstr.str) ? wstr.str : "-----"; }
+string ReadOffsetWString(OffsetWString &str) { return exists(str.str) ? str.str : "-----"; }
+string ReadVec4(vec4 &v) { return Str("%f %f %f %f", v.x, v.y, v.z, v.w); }
+string ReadMat4(mat4 &v) { return ReadVec4(v.m4); }
+string ReadCapsule(Capsule &c) { return Str("%f %f %f", (c.p0.x - c.p1.x) / 2, (c.p0.y - c.p1.y) / 2, (c.p0.z - c.p1.z) / 2); }
+string ReadOBB(OBB &o) { return ReadMat4(o.coord); }
+
+void align(int n) {
+    if (FTell()%n == 0) return;
+    FSkip(n - FTell()%n);
+}

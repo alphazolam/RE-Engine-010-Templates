@@ -1,0 +1,90 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: HR.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.hf.*|*.chf.*
+//  ID Bytes: 48 46 20 20, 43 48 46 20
+//   History:
+//------------------------------------------------
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+local int isChf = Strstr(GetFileName(), ".chf.") != -1;
+
+uint32 magic <format=hex>;
+uint32 splitCount;
+uint32 ukn1;
+uint32 resourceCount;
+float tileSizeX;
+float tileSizeY;
+uint32 ukn2, ukn3;
+
+typedef struct vec3 {
+	float x, y, z;
+	uint32 padding <hidden=true>;
+};
+
+vec3 min <read=(Str("%f %f %f", x, y, z))>, max <read=(Str("%f %f %f", x, y, z))>;
+
+uint64 pointsOffset;
+uint64 pointDataOffset;
+uint64 maskBitsOffset;
+uint64 dataOffset1;
+
+if (isChf) {
+    uint64 resourcesOffset;
+    uint64 ukn4;
+} else {
+    uint64 dataOffset2;
+    uint64 resourcesOffset;
+}
+
+local int pointCount = (splitCount + 1) * (splitCount + 1);
+local int tileCount = splitCount * splitCount;
+
+typedef struct point {
+	float h1, h2, h3, h4, h5;
+};
+
+string CalculateGridPoint(uint n) { return Str("%d x %d", Floor(n%(splitCount + 1)), Floor(n/(splitCount + 1))); }
+string CalculateGridTile(uint n) { return Str("%d x %d", Floor(n%splitCount), Floor(n/splitCount));  }
+
+FSeek(pointsOffset);
+float heights[pointCount];
+
+FSeek(pointDataOffset);
+uint32 uknPointData[pointCount];
+
+FSeek(maskBitsOffset);
+uint32 maskBits[pointCount] <format=binary>;
+
+FSeek(dataOffset1);
+if (isChf) {
+    uint32 collisionPresetIds[tileCount];
+} else {
+    uint32 uknPointData2[pointCount];
+}
+
+if (exists(dataOffset2)) {
+    FSeek(dataOffset2);
+    local int i = 0;
+    struct {
+        uint32 data[8];
+        uint32 collisionPresetId;
+        uint32 id2, id3, id4;
+        local int index = i++;
+    } tileData[tileCount * 2] <read=Str("%s: %d, %d %d %d %d %d %d %d %d", CalculateGridTile(index / 2), collisionPresetId, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]), optimize=false>;
+}
+
+if (resourcesOffset > 0) {
+    FSeek(resourcesOffset);
+    struct {
+	    uint64 offset;
+        FSeek(offset);
+        wstring str;
+        FSeek(startof(offset) + sizeof(offset));
+    } collisionPresets[resourceCount] <optimize=false, read=str>;
+}

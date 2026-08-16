@@ -1,0 +1,30 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: CCBK.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.ccbk.*
+//  ID Bytes: 43 43 42 4B
+//   History:
+//------------------------------------------------
+
+uint magic;
+uint32 count;
+uint64 idOffset;
+uint64 pathOffset;
+
+FSeek(idOffset);
+uint32 ResourceIDs[count];
+
+FSeek(pathOffset);
+
+struct {
+    uint64 strOffset;
+    local int64 tell = FTell();
+    FSeek(strOffset);
+    wstring path;
+    FSeek(tell);
+} ResourcePath[count]  <optimize=false, read=(path)>;

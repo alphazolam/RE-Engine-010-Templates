@@ -1,0 +1,95 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: CLSM.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.clsm.*
+//  ID Bytes: 43 4C 53 4D
+//   History:
+//------------------------------------------------
+
+#include "common.bt";
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+struct {
+    uint magic;
+    if (version >= 17) {
+        uint groupCount;
+    }
+    uint vertexCount;
+    uint faceCount;
+    uint materialsCount;
+    uint bonesCount;
+    enum {
+        Weights4 = 1,
+        Weights8 = 2,
+    } weightType;
+    if (version >= 17) {
+        uint padding;
+        uint64 groupsOffset;
+    }
+    uint64 verticesOffset;
+    uint64 facesOffset;
+    uint64 dataOffset;
+    uint64 bonesOffset;
+    uint64 collisionMaterialsOffset;
+} Header;
+
+if (exists(Header.groupsOffset)) {
+
+    FSeek(Header.groupsOffset);
+    struct {
+        int index;
+        uint32 vertexCount;
+        uint32 faceCount;
+        uint32 vertsOffset;
+        uint32 facesOffset;
+    } Groups[Header.groupCount];
+}
+
+FSeek(Header.verticesOffset);
+struct {
+    vec3p position;
+    if (Header.weightType == 2) {
+        uint16 indices[8];
+        float weights[8];
+    } else {
+        uint32 indices[4];
+        float weights[4];
+    }
+} Vertices[Header.vertexCount] <optimize=true, read=Str("%s", ReadVec3P(position))>;
+
+FSeek(Header.facesOffset);
+struct {
+    uint16 vertIndex1;
+    uint16 vertIndex2;
+    uint16 vertIndex3;
+    uint16 padding<hidden=true>;
+    uint32 ukn;
+    uint32 flags;
+} Faces[Header.faceCount] <read=Str("%d %d %d", vertIndex1, vertIndex2, vertIndex3)>;
+
+FSeek(Header.dataOffset);
+struct {
+    int id;
+    uint32 attributes1;
+    uint32 attributes2;
+    uint32 attributes3;
+} MaterialInfos[Header.materialsCount];
+
+FSeek(Header.bonesOffset);
+struct {
+    OffsetWString name(0);
+    uint32 hash;
+    uint32 padding;
+    float floats[16];
+} Bones[Header.bonesCount] <optimize=false, read=name.str>;
+
+FSeek(Header.collisionMaterialsOffset);
+struct {
+    OffsetWString name(0);
+    OffsetWString name2(0);
+} CollisionMaterials[Header.materialsCount] <optimize=false, read=ReadOffsetWString(name)>;

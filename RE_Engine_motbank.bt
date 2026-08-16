@@ -4,18 +4,18 @@
 //      File: DMC5_motbank.bt
 //   Authors: alphaZomega
 //   Version: 0.1
-//   Purpose: 
+//   Purpose:
 //  Category: RE Engine
 // File Mask: *.motbank.*
 //  ID Bytes: [+4] 6D 62 6E 6B
-//   History: 
+//   History:
 //------------------------------------------------
 uint version;
 uint magic;
 FSkip(8);
 uint64 motlistsOffset;
 uint64 uvarOffset;
-if (version == 3) 
+//if (version == 3)
     uint64 ukn;
 struct MotlistCount {
     int motlistCount;
@@ -32,11 +32,13 @@ FSeek(motlistsOffset);
 //    FSkip(8);
 struct MOTLISTOFFSET {
     uint64 offset;
-    if (version==3)
-        int32 BankID, uknInt;
-    else
+    if (version==3) {
+        int32 BankID <format=binary>, BankType <format=binary>;
+        uint32 BankTypeMaskBits <format=binary>, ukn;
+    } else {
         int64 BankID;
-    uint64 ukn;
+        uint64 ukn;
+    }
     FSeek(offset);
     wstring motlist;
     FSeek(startof(this)+24);

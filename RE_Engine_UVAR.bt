@@ -41,8 +41,8 @@ typedef struct {
 
     string ReadrGUID (rGUID &g) {
         local char s[37];
-        SPrintf(s, 
-            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
+        SPrintf(s,
+            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
             g.uuid[0], g.uuid[1], g.uuid[2], g.uuid[3], g.uuid[4], g.uuid[5], g.uuid[6], g.uuid[7],
             g.uuid[8], g.uuid[9], g.uuid[10], g.uuid[11], g.uuid[12], g.uuid[13], g.uuid[14], g.uuid[15]
         );
@@ -53,7 +53,7 @@ typedef struct {
     uint32 nameHash, ukn;
     local uint64 test <hidden=true> = ReadUInt64(FTell());
     if (test > 0 && start + test < FileSize() && start + test > FTell()) {
-        uint64 hashOffs; 
+        uint64 hashOffs;
         FSeek(start + hashOffs);
         rGUID Guid;
     } else if (detectedFloat(FTell())) {
@@ -62,9 +62,9 @@ typedef struct {
     if (exists(value))
         local float hiddenValue <hidden=true> = value;
     FSeek(startof(nameHash) + 16);
-} HASHPROP <read=ReadHASHPROP, optimize=false>;
+} NODE_PARAMETER <read=ReadNODE_PARAMETER, optimize=false>;
 
-string ReadHASHPROP (HASHPROP &input) {
+string ReadNODE_PARAMETER (NODE_PARAMETER &input) {
     string s = "";
     if (exists(input.hiddenValue))
         SPrintf(s, "%g", input.hiddenValue);
@@ -83,7 +83,7 @@ typedef struct {
         if (offs2 < FileSize()) {
             FSeek(start + offs2);
             if (ReadUShort(FTell()+2) != 0)
-                HASHPROP Value;
+                NODE_PARAMETER Value;
             else
                 SUBPROP4 SubProp4;
         }
@@ -94,15 +94,20 @@ typedef struct {
 typedef struct {
     uint64 nameOffset;
     uint64 dataOffset;
+	uint64 uknOffset;
+	uint16 nodeId;
+	uint16 valueCount;
+	uint32 uknCount;
     local int pos <hidden=true> = FTell();
     FSeek(start + nameOffset);
     string name <open=suppress>;
-    FSeek(start + dataOffset);
-    HASHPROP Hashed_Value;
-    if (exists(Hashed_Value.hiddenValue))
-        local float hiddenValue <hidden=true> = Hashed_Value.hiddenValue;
+    if (dataOffset > 0) {
+        FSeek(start + dataOffset);
+        NODE_PARAMETER parameters[valueCount];
+        if (exists(parameters[0].hiddenValue))
+            local float hiddenValue <hidden=true> = parameters[0].hiddenValue;
+    }
     FSeek(pos);
-    FSkip(16);
 } NODE <name=ReadNODENAME, read=ReadNODE, optimize=false>;
 
 string ReadNODENAME (NODE &input) {
@@ -117,48 +122,41 @@ string ReadNODE (NODE &input) {
         SPrintf(s, "%g", input.hiddenValue);
     return s;
 }
-typedef struct {
-    uint64 countA;
-    ushort countB, countC;
-    uint D;
-    for (k=0; k<countA; k++) {
-        if (ReadUInt64(FTell()) > FileSize()) {
-            //
-        } else {
-            NODE Node;
-        }
-    }
-    if (countC > 1)
-        struct {
-            FSkip(16);
-        } ukn[countC-1] <optimize=true>;
-} OFFSET2_DATA;
+struct NodeConnection {
+    uint16 node1;
+    uint16 input;
+    uint16 node2;
+    uint16 output;
+};
+
+string ReadNodeConnection(NodeConnection &rel) {
+    string s = "";
+    SPrintf(s, "node %d input %d <- node %d output %d", rel.node1, rel.input, rel.node2, rel.output);
+    return s;
+}
 
 typedef struct {
     uint64 nodesOffset;
-    uint64 offset2;
-    ushort propCount, B, C; //skipToNextLine();
-    if (propCount > 0) {
+    uint64 connectionsOffset;
+    ushort nodeCount, resultNodeId, ukn; //skipToNextLine();
+    if (nodeCount > 0) {
         if (nodesOffset > 0) {
             FSeek(start + nodesOffset);
             if (ReadUInt(FTell()) < FileSize())
-                struct NODE Node[propCount];
-            else 
+                struct NODE Node[nodeCount];
+            else
                 string name <open=suppress>;
         }
-        if (offset2 > 0) {
-            FSeek(start + offset2);
-            if (ReadUInt64(FTell()) > FileSize()) {
-                //SUBPROP2 Prop2;
-                struct {
-                    FSkip(16);
-                } Beginning_Of_Offset2_Data;
-            } else {
-                OFFSET2_DATA Offset2_Data;
-            }
+        if (connectionsOffset > 0) {
+            FSeek(start + connectionsOffset);
+            struct{
+                while (ReadShort() < nodeCount && ReadInt64() != 0) {
+                    NodeConnection relation <read=ReadNodeConnection>;
+                }
+            } Connections;
         }
     }
-} PROP <read=ReadProp, optimize=false>;  
+} PROP <read=ReadProp, optimize=false>;
 
 string ReadProp (PROP &input) {
     if (exists(input.name))
@@ -166,40 +164,48 @@ string ReadProp (PROP &input) {
     return "";
 }
 
-
 typedef struct {
     rGUID Guid;
     uint64 nameOffset;
     FSeek(start + nameOffset);
     wstring name <open=suppress>;
     FSeek(startof(nameOffset) + 8);
-    uint64 floatOffset, uknOffset;
+    uint64 valueOffset, expressionOffset;
     uint type : 24;
-    uint numBits : 8;
+    uint flags : 8 <format=binary>;
     uint nameHash;
 
-    if (floatOffset > 0) { //!didSeek && 
-        FSeek(start + floatOffset);
-        
-        if ((numBits / 32) <= 1) {
-            float Value_As_Float;
-            FSeek(startof(Value_As_Float));
-            int Value_As_Int;
-        } else {
-            float Value_As_Float[(numBits / 32)+1];
-            FSeek(startof(Value_As_Float[0]));
-            int Value_As_Int[(numBits / 32)+1];
-        }
+    if (valueOffset > 0) { //!didSeek &&
+        FSeek(start + valueOffset);
+
+		if (valueOffset > 0) { //!didSeek &&
+			FSeek(start + valueOffset);
+			switch (type) {
+				case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 9: int value; break;
+				case 8: uint32 value; break;
+				case 11: float value; break;
+				case 12: double value; break;
+				case 13: string value; break;
+				case 14: wstring value; break;
+				case 15: string value; break;
+				case 17: float value[2]; break;
+				case 18: float value[3]; break;
+				case 19: float value[4]; break;
+				case 20: float value[16]; break;
+				case 21: rGUID value;break;
+			}
+		}
     }
-    if (uknOffset > 0) {
-        FSeek(start + uknOffset);
-        PROP VarData;           
+
+    if (expressionOffset > 0) {
+        FSeek(start + expressionOffset);
+        PROP expression;
     }
     FSeek(startof(nameHash) + 4);
 } VARIABLE <optimize=false, name=ReadVariableName, read=ReadVariable, write=WriteVariable>;
 
 wstring ReadVariableName(VARIABLE &input) {
-    if (exists(input.VarData))
+    if (exists(input.expression))
         return (input.name + "*");
     return input.name;
 }
@@ -214,7 +220,7 @@ wstring ReadVariable(VARIABLE &input) {
         if (detectedFloat(startof(input.Value_As_Float)))
             SPrintf(s, "%g", input.Value_As_Float[0]);
         else
-            SPrintf(s, "%u", input.Value_As_Int[0]); 
+            SPrintf(s, "%u", input.Value_As_Int[0]);
     }
     return (s);
 }
@@ -230,7 +236,7 @@ typedef struct {
         ushort variableCount, embedCount;
     } Header;
 
-    if (Header.variableCount && Header.dataOffset > 0) { 
+    if (Header.variableCount && Header.dataOffset > 0) {
         FSeek(start + Header.dataOffset);
         struct {
             for (j=0;j<Header.variableCount;j++) {
@@ -238,7 +244,7 @@ typedef struct {
             }
         } Data;
     }
-    if (Header.stringsOffset > 0) { 
+    if (Header.stringsOffset > 0) {
         FSeek(start + Header.stringsOffset);
         struct {
             WSTRING str[Header.variableCount+1] <open=suppress>;
@@ -255,7 +261,7 @@ typedef struct {
             }
         } Embedded_UVARs;
     }
-    
+
     if (Header.variableCount && Header.hashInfoOffset > 0) {
         struct {
             FSeek(start + Header.hashInfoOffset);

@@ -1,0 +1,20 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_CLRP
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category:
+// File Mask: *.clrp.*
+//  ID Bytes: 43 4C 52 50
+//   History:
+//------------------------------------------------
+
+uint32 magic;
+uint32 count;
+uint64 dataOffset;
+FSeek(dataOffset);
+struct {
+	float x, y, z;
+} Items[count] <read=Str("%f %f %f", x, y, z)>;

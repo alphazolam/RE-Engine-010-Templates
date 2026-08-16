@@ -1,0 +1,52 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: RE_Engine_SSS.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose: Parse sss.* files
+//  Category: RE Engine
+// File Mask: *.sss.*
+//  ID Bytes: 53 53 53 00
+//   History:
+//------------------------------------------------
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+#include "common.bt";
+
+struct {
+    uint magic;
+    uint version;
+    uint profileCount;
+    FSkip(4);
+} header;
+
+typedef struct {
+    vec3 wideBlur;
+    vec3 nearStrength;
+    float globalRadius;
+    float nearRadiusRate;
+    if (version >= 2) {
+        float phaseControl;
+        float phaseScatter;
+    }
+    if (version >= 3) {
+        float roughness0;
+        float roughness1;
+        float roughnessBlend;
+    }
+    if (version >= 4) {
+        vec3 scatterColor;
+        float scatterDistance;
+        vec3 transmitColor;
+        float transmitDistance;
+        float transmitIntensity;
+    }
+    if (version >= 6) {
+        uint toggle;
+        float uknNum;
+    }
+} SSSProfile <optimize=false>;
+
+SSSProfile Profiles[header.profileCount];

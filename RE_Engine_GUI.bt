@@ -4,14 +4,16 @@
 //      File: RE_Engine_GUI.bt
 //   Authors: alphaZomega
 //   Version: 1.32
-//   Purpose: Editing RE Engine gui.180014, gui.270020, gui.340020, gui.400022, and gui.400023 files
+//   Purpose: Editing RE Engine gui.* files
 //  Category: RE Engine
-// File Mask: *.gui.180014;*.gui.270020;*.gui.340020;*.gui.400022;*.gui.400023
+// File Mask: *.gui.*
 //  ID Bytes: [+4] 47 55 49 52
 //   History: January 26, 2021
 //------------------------------------------------
 
 LittleEndian();
+
+#include "common.bt";
 
 //global vars
 local uint64 R <hidden=true>, G <hidden=true>, B <hidden=true>, A <hidden=true>;
@@ -28,7 +30,7 @@ local ubyte DisplayCLIP = true; //Set this to false if the template is crashing
 
 //typedef structs
 typedef byte BLANK <name=readBLANK,read=readBLANK, write=null>;
-    
+
     string readBLANK(BLANK &ref) { return " ";}
 
     //Special Make-Unique write function:
@@ -38,13 +40,13 @@ typedef byte BLANK <name=readBLANK,read=readBLANK, write=null>;
         for (i=0; i<HEADER.numOffs; i++) {
             for (j=0; j<Elements.Element[i].ElementInfo.subElementCount; j++) {
                 for (k=0; k<Elements.Element[i].SubElement[j].itemCount; k++) {
-                    if (exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset) && exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes) 
+                    if (exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset) && exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes)
                     && Elements.Element[i].SubElement[j].Attributes.Attribute[k].isPointer) {
                         ctr = 0;
                         for (m=0; m<10000; m++) {
                             if (offsets[m] == Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset)
                                 ctr++;
-                            if (offsets[m] == 0 || ctr > 1) { //exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].valueOffset) && 
+                            if (offsets[m] == 0 || ctr > 1) { //exists(Elements.Element[i].SubElement[j].Attributes.Attribute[k].valueOffset) &&
                                 Elements.Element[i].SubElement[j].Attributes.Attribute[k].Value_Offset = FileSize();
                                 ConvertDataToBytes(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes, bytes );
                                 WriteBytes(bytes, FileSize(), sizeof(Elements.Element[i].SubElement[j].Attributes.Attribute[k].bytes));
@@ -62,7 +64,7 @@ typedef byte BLANK <name=readBLANK,read=readBLANK, write=null>;
     }
 
     string ReadUniqueWriterName (BLANK &u) { return "[MakeUnique Script]"; }
-    
+
     string ReadUniqueWriter (BLANK &u) { return "--> [Input Here to make all values unique] <--"; }
 
 typedef struct {
@@ -78,7 +80,8 @@ typedef ubyte COLORBYTE <read=ReadCOLORBYTE, write=WriteCOLORBYTE>;
 	void WriteCOLORBYTE (COLORBYTE &f, string s ) { local float ff = Atof(s); f = (COLORBYTE)((ubyte)(ff * 255.0f));}
 
 typedef struct {
-    uint32 type, padding <hidden=true>; 
+    uint32 type;
+    uint32 uknInt;
     uint64 nameOffset;
     FSeek(nameOffset);
     string Name;
@@ -91,10 +94,10 @@ typedef struct {
     local wstring Name <hidden=true> = AttributeInfo.Name;
     //local uint64 valueOffset <hidden=true> = ReadUInt64(FTell());
     uint64 Value_Offset;
-    if (version > 430000)
-        uint64 ukn;
+    if (version > 430027)
+        uint64 nameHash;
     local string type <hidden=true> = "";
-    
+
     //record if value is unique or not:
     local ubyte uniqueOffset <hidden=true> = false;
     local uint offsetIdx <hidden=true> = 0;
@@ -141,9 +144,14 @@ typedef struct {
             break;
         case 13:
         case 32: //filepath
-        case 34: //string (RE3)
+        // case 34: //string (RE3)
             type = "wstring";
             wstring Value <open=suppress>;
+            isPointer = true;
+            break;
+        case 34: // guid
+            type = "guid";
+            GUID value;
             isPointer = true;
             break;
         case 22:
@@ -151,7 +159,7 @@ typedef struct {
             type = "vector4";
 			struct {
 				float Red <name="X">, Green <name="Y">, Blue <name="Z">;
-            	if (Name != "Position" && Name != "Scale") 
+            	if (Name != "Position" && Name != "Scale")
                 	float Alpha <name="W">;
 				else local float Value_W <hidden=true>;
             } Value;
@@ -178,6 +186,13 @@ typedef struct {
             readColor();
             isPointer = true;
             break;
+        case 35:
+            type = "rangeI";
+			struct {
+				int s, r;
+            } Value;
+            isPointer = true;
+            break;
         default:
             break;
     }
@@ -185,18 +200,18 @@ typedef struct {
 	    local uint valueSz <hidden=true> = FTell() - startof(Value);
 	    FSeek(startof(Value));
 	    uchar bytes[valueSz] <hidden=true>;
-    } else 
+    } else
         local uint valueSz <hidden=true> = 0;
-    FSeek(startof(this)+24 + 8 * (version > 430000));
+    FSeek(startof(this)+24 + 8 * (version > 430027));
     //if (!exists(Value))
     //    Printf(assertFailed);
-} ATTRIBUTE <name=ReadATTRIBUTENAME, read=ReadATTRIBUTE, write=WriteATTRIBUTE, optimize=false>; // 
-    string ReadATTRIBUTENAME (ATTRIBUTE &input) { 
+} ATTRIBUTE <name=ReadATTRIBUTENAME, read=ReadATTRIBUTE, write=WriteATTRIBUTE, optimize=false>; //
+    string ReadATTRIBUTENAME (ATTRIBUTE &input) {
         if (!exists(input.Value)) {
-            return ("*" + input.Name); 
-        } return input.Name; 
+            return ("*" + input.Name);
+        } return input.Name;
     }
-    string ReadATTRIBUTE (ATTRIBUTE &input) { 
+    string ReadATTRIBUTE (ATTRIBUTE &input) {
         string value = "";
         if (exists(input.Value)) {
             if (input.type == "float") {
@@ -215,7 +230,7 @@ typedef struct {
                 value = input.Value;
             }
         }
-        return (value); 
+        return (value);
     }
     void WriteATTRIBUTE(ATTRIBUTE &input, string s) {
         if (exists(input.Value)) {
@@ -267,7 +282,7 @@ typedef struct {
                     	if (sizeof(input.Value) > 4) {
                         	if (input.type == "vector3" || input.Name == "Position" || input.Name == "Scale")
                             	InsertBytes(writePos, 8, 0);
-                        	else 
+                        	else
                                 InsertBytes(writePos, 12, 0);
                             local float x, y, z, w;
                             SScanf( s, "%g %g %g %g", x, y, z, w);
@@ -277,7 +292,7 @@ typedef struct {
                         	WriteFloat(writePos+8, z);
                         	if (input.type == "vector4" || input.type == "color")
                             	WriteFloat(writePos+12, w);
-                    	} else { 
+                    	} else {
                         	WriteUByte(writePos, Atoi(s));
                         	WriteUByte(writePos+1, Atoi(s));
                         	WriteUByte(writePos+2, Atoi(s));
@@ -288,11 +303,11 @@ typedef struct {
 							if (doesExist(s, ",")) {
 								SScanf( s, "%g,%g,%g,%g", input.Value.Red, input.Value.Green, input.Value.Blue, input.Value.Alpha);
 							} else { SScanf( s, "%g %g %g %g", input.Value.Red, input.Value.Green, input.Value.Blue, input.Value.Alpha); }
-						} else if (doesExist(s, ",")) { 
+						} else if (doesExist(s, ",")) {
 							SScanf( s, "%g,%g,%g", input.Value.Red, input.Value.Green, input.Value.Blue);
 						} else { SScanf( s, "%g %g %g", input.Value.Red, input.Value.Green, input.Value.Blue);  }
 					}
-                    
+
 				}
             }
             if (doWrite)
@@ -301,89 +316,162 @@ typedef struct {
     }
 
 typedef struct {
-    struct rGUID Guid, Guid;
+    if (HEADER.guiVersion < 890041) {
+        GUID guid;
+    } else {
+        uint64 hash;
+    }
+} GuiNodeID <optimize=true, read=(exists(guid) ? GUIDToString(guid) : hash)>;
+
+typedef struct {
+    GuiNodeID ID, ContainerID;
     if (HEADER.guiVersion >= 400022) {
-        uint64 ukn;
-        uint64 ukn;
+        GUID Guid3;
     }
     struct StringRead Name(-1,0,0,0,0);
     struct StringRead className(-1,0,0,1,0);
     uint64 subStructOffs;
-    uint64 subStructEndOffs;
-    uint64 padding <hidden=true>; 
+    if (HEADER.guiVersion >= 540034) uint64 reorderIndicesOffset;
+    uint64 extraAttributesOffset;
+    // if (HEADER.guiVersion == 430027 || HEADER.guiVersion >= 620035) uint64 nullOffset;
+    if (HEADER.guiVersion >= 430027) uint64 uknOffset;
+    uint64 elementDataOffset;
+    if (HEADER.guiVersion >= 430027) uint64 uknNum;
 } SUBELEMENTINFO <read=ReadSUBELEMENTINFO>;
     string ReadSUBELEMENTINFO (SUBELEMENTINFO &input) { return input.className.String; }
 
 typedef struct {
     SUBELEMENTINFO SubElementInfo;
     FSeek(SubElementInfo.subStructOffs);
-    uint64 itemCount; 
+    uint64 itemCount;
     if (itemCount)
         struct {
             ATTRIBUTE Attribute[itemCount];
         } Attributes <open=true>;
-    FSeek(SubElementInfo.subStructEndOffs);
-    
-    if (ReadUInt()) {
+
+    if (exists(SubElementInfo.reorderIndicesOffset)) {
+        FSeek(SubElementInfo.reorderIndicesOffset);
+        if (HEADER.guiVersion >= 54000)
+        {
+            uint16 orderIndices[itemCount];
+        }
+    }
+    FSeek(SubElementInfo.extraAttributesOffset);
+    uint64 extraAttributeCount;
+    if (extraAttributeCount > 0) {
         struct {
-            int A, B, C, D;
-            struct StringRead sName1(-1,0,0,1,0);
-            int64 valueOffs;
-            int E, F;
-            struct StringRead sName2(-1,0,0,1,0);
-            int64 G;
-            struct rGUID Guid;
-            int64 H;
-            struct StringRead wName(-1,0,0,0,0);
-        } Unknown;
+            ATTRIBUTE Attribute[extraAttributeCount];
+        } ExtraAttributes <open=true>;
+    }
+    if (exists(SubElementInfo.uknOffset) && SubElementInfo.uknOffset) {
+        FSeek(SubElementInfo.uknOffset);
+        uint64 uknCount;
+        struct {
+            GuiNodeID StateId;
+            // uint64 asciiNameOffset;
+            // typedef struct(int64 atAddress, int64 addOffset, ubyte isAbsolute, ubyte isUTF8, ubyte isUint32)
+            struct StringRead AsciiName(-1, 0, 0, 1, 0);
+            uint64 offs3;
+            struct StringRead UnicodeName(-1, 0, 0, 0, 0);
+        } ExtraStateReference[uknCount] <optimize=true>;
     }
     BLANK blank; FSkip(-1);
-} SUBELEMENT <name="SubElement", read=ReadSUBELEMENT>;
+} SUBELEMENT <name="Element", read=ReadSUBELEMENT>;
     string ReadSUBELEMENT (SUBELEMENT &input) { return input.SubElementInfo.Name.String; }
 
 typedef struct {
-    struct rGUID Guid;    
-    uint64 nameOffs, viaOffs, offs2, offs3;
+    GuiNodeID Id;
+    uint64 nameOffs, viaOffs, elementsOffset, clipsOffset;
+
+    if (HEADER.guiVersion >= 890041) {
+        uint64 offsPrag1;
+        uint64 attributesOffset2;
+    }
+
     pos = FTell();
-    FSeek(offs2); 
-    uint64 subElementCount;
-    if (subElementCount)
-        uint64 offs[subElementCount];
-    FSeek(offs3); 
-    uint32 E, clipCount;
-    if (clipCount)
-        uint64 offset[clipCount];
+    if (elementsOffset > 0) {
+        FSeek(elementsOffset);
+        uint64 subElementCount;
+        if (subElementCount && HEADER.guiVersion < 890041)
+            uint64 offs[subElementCount];
+    } else {
+        local uint64 subElementCount = 0;
+    }
+    FSeek(clipsOffset);
+    uint32 totalClipCount, clipCount;
+    if (totalClipCount)
+        uint64 offset[totalClipCount];
+    if (exists(offsPrag1) && offsPrag1 > 0) {
+        FSeek(offsPrag1);
+        uint64 count1;
+        struct {
+            GuiNodeID id;
+            struct StringRead Name(-1,0,0,0,0);
+            struct StringRead Tag(-1,0,0,1,0);
+            struct StringRead State(-1,0,0,0,0);
+            uint32 nameUtf16Hash;
+            ubyte propertyType;
+            ubyte uknByte;
+            uint16 padding;
+            uint64 dataOffset;
+        } ContainerExtraData1[count1] <optimize=false, read=ReadStringRead(Name)>;
+    }
+    if (exists(attributesOffset2) && attributesOffset2 > 0) {
+        FSeek(attributesOffset2);
+        uint64 count2;
+        struct {
+            GuiNodeID id;
+            uint64 listOffset;
+            uint32 propertyType;
+            int32 uknInt;
+            struct StringRead ClassName(-1,0,0,1,0);
+            struct StringRead Name(-1,0,0,1,0);
+            local uint64 p = FTell();
+            FSeek(listOffset);
+            uint64 itemCount;
+            uint64 IDs[itemCount];
+            FSeek(p);
+        } ContainerExtraData2[count2] <optimize=false, read=ReadStringRead(Name)>;
+    }
     FSeek(nameOffs);
-    wstring Name; 
+    wstring Name;
     FSeek(viaOffs);
     string className;
-    FSeek(startof(offs3)+8);
+    FSeek(pos);
 } ELEMENTINFO <name="ElementInfo", read=ReadELEMENTINFO>;
     string ReadELEMENTINFO (ELEMENTINFO &input) { return input.className; }
 
 typedef struct {
     ELEMENTINFO ElementInfo;
-    
-    for (j=0; j<ElementInfo.subElementCount ; j++){
-        FSeek(ElementInfo.offs[j]);
-        SUBELEMENT SubElement;
+
+    if (HEADER.guiVersion < 890041) {
+        for (j=0; j<ElementInfo.subElementCount ; j++){
+            FSeek(ElementInfo.offs[j]);
+            SUBELEMENT SubElement;
+        }
+    } else {
+        FSeek(ElementInfo.elementsOffset + 8);
+        for (j=0; j<ElementInfo.subElementCount ; j++){
+            SUBELEMENT SubElement;
+            FSeek(startof(SubElement.SubElementInfo.uknNum) + 8);
+        }
     }
-    
-    if (DisplayCLIP && ElementInfo.clipCount) {
+
+    if (DisplayCLIP && ElementInfo.totalClipCount) {
         FSeek(ElementInfo.offset[0]);
         struct CLIP {
             local int z <hidden=true>;
-            for (z=0; z<ElementInfo.clipCount; z++) {
+            for (z=0; z<ElementInfo.totalClipCount; z++) {
                 FSeek(ElementInfo.offset[z]);
                 struct CLIP_ENTRY Clip;
             }
             if (FTell()<=startof(this))
                 FSeek(startof(Clip[0])+sizeof(Clip[0]));
         } Clip <name="CLIP Data", read=ReadCLIP>;
-        
+
     }
     FSeek(startof(ElementInfo)+sizeof(ElementInfo));
-} ELEMENT <name="Element", read=ReadELEMENT>;
+} ELEMENT <name="Container", read=ReadELEMENT>;
     string ReadELEMENT (ELEMENT &input) { return input.ElementInfo.Name; }
     string ReadCLIP (CLIP &input) { return ReadCLIP_ENTRY(input.Clip[0]); }
 
@@ -412,10 +500,10 @@ string Lower(string stringIn) {
 
 void readColor() {
     if (colorType == 1) { //for reader
-        COLORBYTE Value <hidden=true>, Blue <hidden=true>, Green <hidden=true>, Alpha <hidden=true>; 
+        COLORBYTE Value <hidden=true>, Blue <hidden=true>, Green <hidden=true>, Alpha <hidden=true>;
     } else {
-        float Value <hidden=true>, Blue <hidden=true>, Green <hidden=true>, Alpha <hidden=true>; 
-    } 
+        float Value <hidden=true>, Blue <hidden=true>, Green <hidden=true>, Alpha <hidden=true>;
+    }
     FSeek(startof(Value));
     if (colorType) {
         R = ReadUByte(FTell());
@@ -441,11 +529,11 @@ void readColor() {
         SetForeColor(cGreen);
         SetBackColor(cNone);
     } Value <name="Color", open=true>;
-    FSkip(-1); BLANK blank; 
+    FSkip(-1); BLANK blank;
 }
 
 //generic string reader
-typedef struct(int64 atAddress, int64 addOffset, ubyte isAbsolute, ubyte isUTF8, ubyte isUint32) 
+typedef struct(int64 atAddress, int64 addOffset, ubyte isAbsolute, ubyte isUTF8, ubyte isUint32)
 {
     if (!isAbsolute) {
         if (atAddress != -1)
@@ -455,7 +543,7 @@ typedef struct(int64 atAddress, int64 addOffset, ubyte isAbsolute, ubyte isUTF8,
         else
             uint64 strOffset;
         FSeek(strOffset + addOffset);
-    } else 
+    } else
         FSeek(atAddress + addOffset);
 
     if (!exists(strOffset) || strOffset > 0)
@@ -463,28 +551,28 @@ typedef struct(int64 atAddress, int64 addOffset, ubyte isAbsolute, ubyte isUTF8,
             string String;
         else
             wstring String;
-    
+
     if (exists(strOffset)) {
         if (atAddress == -1 || startof(this) == atAddress)
             FSeek(startof(strOffset) + 8 - isUint32 * 4);
-        else 
+        else
             FSeek(startof(this)+1);
     }
-    
+
 } StringRead <read=ReadStringRead, write=WriteStringRead>;
 
-    wstring ReadStringRead(StringRead &st) { 
-        if (exists(st.String)) 
+    wstring ReadStringRead(StringRead &st) {
+        if (exists(st.String))
             return st.String;
         local string s;
         if (exists(st.strOffset))
-            SPrintf(s, "%i", st.strOffset); 
-        return s; 
+            SPrintf(s, "%i", st.strOffset);
+        return s;
     }
-    
-    void WriteStringRead(StringRead &st, string s) { 
+
+    void WriteStringRead(StringRead &st, string s) {
         if (exists(st.String))
-            st.String = s; 
+            st.String = s;
         else if (exists(st.strOffset))
             st.strOffset = Atoi(s);
     }
@@ -495,13 +583,20 @@ typedef struct {
 
     string ReadrGUID (rGUID &g) {
         local char s[37];
-        SPrintf(s, 
-            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
+        SPrintf(s,
+            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
             g.uuid[0], g.uuid[1], g.uuid[2], g.uuid[3], g.uuid[4], g.uuid[5], g.uuid[6], g.uuid[7],
             g.uuid[8], g.uuid[9], g.uuid[10], g.uuid[11], g.uuid[12], g.uuid[13], g.uuid[14], g.uuid[15]
         );
         return s;
     }
+
+typedef struct OptimizedKey {
+    float frame;
+    uint32 interpolationType : 8;
+    uint32 flags : 8;
+    uint32 value : 16;
+};
 
 typedef struct KEY {
     float frame;
@@ -526,7 +621,7 @@ typedef struct KEY {
     uint32 instanceValue : 1;
     uint32 reserved : 23 <hidden=true>;
     uint32 reserved2 <hidden=true>;
-    
+
     if (exists(parentof(this).PropInfo.DataType)) {
         switch (parentof(this).PropInfo.DataType) {
 
@@ -554,14 +649,14 @@ typedef struct KEY {
                 double value; break;
             case PropertyType_Str8:
             case PropertyType_Enum:
-                uint64 value; 
+                uint64 value;
                 FSeek(clipHeader.namesOffsExtra[1] + start + value);
                 string String;
                 break;
             case PropertyType_Guid:
             case PropertyType_Str16:
             case PropertyType_Asset:
-                uint64 value; 
+                uint64 value;
                 FSeek(clipHeader.unicodeNamesOffs + start + value*2);
                 wstring String;
                 break;
@@ -574,15 +669,15 @@ typedef struct KEY {
         FSkip(-8);
         double value;
     }
-    
-    FSeek(startof(this)+keySize);
+    FSeek(startof(this)+keySize - 8);
+    uint64 hermiteKeyIndex;
 };
 
 typedef KEY clipKey <name=ReadKeyName, read=ReadClipKey, write=WriteClipKey>;
-    
+
     string ReadKeyName (clipKey &k) { string s; SPrintf(s, "Key@%g ", k.frame); return s; }
-    
-    string ReadClipKey (clipKey &k) { 
+
+    string ReadClipKey (clipKey &k) {
         local string s;
         if (exists(k.String)) {
             s += (wstring)k.String;
@@ -590,9 +685,9 @@ typedef KEY clipKey <name=ReadKeyName, read=ReadClipKey, write=WriteClipKey>;
             SPrintf(s, "%lf", ReadDouble(startof(k.value)));
         else
             SPrintf(s, "%i", ReadInt(startof(k.value)));
-        if (exists(k.interpolationHermiteValue)) 
+        if (exists(k.interpolationHermiteValue))
             SPrintf(s, "%s  (%lf)", s, k.interpolationHermiteValue);
-        return s; 
+        return s;
     }
 
     void WriteClipKey(clipKey &k, string s) {
@@ -665,7 +760,7 @@ enum <ubyte> PropertyType
 
 typedef struct {
     struct PROPINFO {
-        if (Version != 486) 
+        if (Version < 486)
             uint32 pad <hidden=true>;
         if (Version == 60)
             int32 uknRE7;
@@ -674,10 +769,23 @@ typedef struct {
         if (Version==60) {
             uint32 U32_1;
             //uint32 U32_2;
-        } else 
-            uint64 U64_1;
-        
-        if (Version == 486) { //RE8
+        } else {
+            uint32 U32_1;
+            uint32 U32_2;
+        }
+
+        if (Version >= 993) {
+            uint64 nameOffset;
+            uint64 dataOffset;
+            uint64 ChildStartIndex;
+            ushort ChildMembershipCount;
+            short arrayIndex;
+            ubyte speedPointNum;
+            PropertyType DataType;
+            ubyte uknByte2;
+            ubyte uknByte3;
+            uint64 lastKeyOffset;
+        } else if (Version == 486) { //RE8
                 uint64 nameOffset;
                 uint64 dataOffset;
                 uint64 ChildStartIndex;
@@ -690,32 +798,32 @@ typedef struct {
                 uint64 speedPointOffset;
                 uint64 clipPropertyOffset;
         } else {
-            
+
             PropertyType DataType;
             ubyte uknCount <hidden=true>;
             FSkip(2);
             if (Version == 99)
                 uint64 RE3hash;
-            else 
+            else
                 FSkip(8);
-            
+
             if (Version == 60) {
                 FSkip(8);
                 uint64 uknRE7;
             }
             uint64 nameOffset, nameOffset;
-            
+
             if (Version == 60) {
                 uint64 uknRE7;
-                FSkip(8); 
-            } 
-            
+                FSkip(8);
+            }
+
             FSkip(8);
             if (Version != 60)
                 FSkip(16);
 
             uint64 ChildStartIndex, ChildMembershipCount <write=InsertClipKey>;
-            
+
             if (Version == 60) {
                 FSkip(8);
                 uint64 uknRE7;
@@ -723,13 +831,13 @@ typedef struct {
         }
         FSeek(clipHeader.namesOffsExtra[1] + start + PropInfo.nameOffset[0]);
         string FunctionName  <hidden=false>;
-        if (Version != 486 && PropInfo.nameOffset[1] > 0) {
+        if (Version < 486 && PropInfo.nameOffset[1] > 0) {
             FSeek(clipHeader.unicodeNamesOffs + start + PropInfo.nameOffset[1]*2);
             wstring wFunctionName <hidden=false>;
         }
         FSeek(startof(this)+propSize);
     } PropInfo <read=ReadPROPINFO, name="[PropInfo]">;
-    
+
     switch (PropInfo.DataType) {
         case PropertyType_NativeArray:
         case PropertyType_Nullable:
@@ -762,17 +870,17 @@ typedef struct {
             }
             break;
     }
-    
+
     FSeek(startof(this)+propSize);
 } PROPERTY <name=ReadPROPERTYNAME, read=ReadPROPERTY, write=WritePROPERTY>;
 
-    string ReadPROPERTY (PROPERTY &input) { 
+    string ReadPROPERTY (PROPERTY &input) {
         string s = "";
         SPrintf(s, "[%i, %i]", input.PropInfo.ValueA, input.PropInfo.ValueB );
-        return s; 
+        return s;
     }
-    
-    string ReadPROPERTYNAME (PROPERTY &input) { 
+
+    string ReadPROPERTYNAME (PROPERTY &input) {
         local string fnName;
         if (exists(input.PropInfo.FunctionName)) {
             fnName = input.PropInfo.FunctionName;
@@ -784,12 +892,12 @@ typedef struct {
                 return s;
             } else if (exists(input.Keys))
                 return  "* " + fnName;
-            else 
-                return fnName; 
+            else
+                return fnName;
         }
-        return ""; 
+        return "";
     }
-    
+
     void WritePROPERTY (PROPERTY &f, string s ) {  SScanf(s, "%g %g", f.PropInfo.ValueA, f.PropInfo.ValueB); }
 
     string ReadPROPINFO(PROPINFO &p) { return EnumToString(p.DataType); }
@@ -805,16 +913,16 @@ typedef struct {
         local int64 endBound = relEnd - relStart;
         FSeek(tell);
         while(FTell() + varSize <= limitPoint) {
-            if (FTell()+varSize > FileSize()) 
+            if (FTell()+varSize > FileSize())
                 break;
             if (doInt32==1)
                 tmp = ReadInt(FTell());
-            else 
+            else
                 tmp = ReadInt64(FTell());
             if (tmp >= startBound && tmp < endBound) {
-                if (doInt32==true) 
+                if (doInt32==true)
                     tmp = WriteUInt(FTell(), tmp+addedSz);
-                else 
+                else
                     WriteUInt64(FTell(), tmp + addedSz);
             }
             FSkip(varSize);
@@ -825,13 +933,13 @@ typedef struct {
     void InsertClipKey(uint64 &ch, string s) {
         local int newKeys = Atoi(s) - ch;
         local int insertPt, clipStart, clipEnd;
-        local int z; 
+        local int z;
         if (newKeys > 0 && !exists(parentof(parentof(ch)).ChildProp)) {
             local int ii, jj, kk;
             while(exists(Elements.Element[ii])) {
                 jj=0;
                 while(exists(Elements.Element[ii].Clip.Clip[jj])) {
-                    if (startof(Elements.Element[ii].Clip.Clip[jj]) < startof(ch) && 
+                    if (startof(Elements.Element[ii].Clip.Clip[jj]) < startof(ch) &&
                     startof(Elements.Element[ii].Clip.Clip[jj]) + sizeof(Elements.Element[ii].Clip.Clip[jj]) > startof(ch)) {
                         clipStart = startof(Elements.Element[ii].Clip.Clip[jj]);
                         clipEnd = startof(Elements.Element[ii].Clip.Clip[jj]) + sizeof(Elements.Element[ii].Clip.Clip[jj]);
@@ -844,7 +952,7 @@ typedef struct {
                             }
                         } else
                             insertPt = startof(Elements.Element[ii].Clip.Clip[jj].Names);
-                        
+
                         for (z=0; z<newKeys; z++) {
                             FixOffsets(0, FileSize(), 0, FileSize(), insertPt, keySize, false);
                             FixOffsets(clipStart, clipEnd, clipStart, clipEnd, insertPt, keySize, false);
@@ -859,33 +967,33 @@ typedef struct {
                     jj++;
                 }
                 ii++;
-            }            
-        } else 
+            }
+        } else
             ch = Atoi(s);
     }
 
 typedef struct {
-    if (Version != 486) {
+    if (Version < 486) {
         uint32 nodeCount, propCount;
         float Start_Frame, End_Frame;
-        struct rGUID GUIDs[2];
-        FSkip(8); 
+        GUID guid1, guid2;
+        FSkip(8);
     } else {
         ushort nodeCount;
         ushort propCount;
         uint nodeType : 8;
         uint padding : 24 <hidden=true>;
     }
-    uint64 hash; 
+    uint64 hash;
     uint64 nameOffset, nameOffset, firstPropIdx;
-    if (Version == 85) 
+    if (Version == 85)
         uint64 firstPropIdx;
-    
+
     pos = FTell();
     if (Version == 99) {
         FSeek(clipHeader.unicodeNamesOffs + start + nameOffset[0] * 2);
         wstring name;
-    } else if (Version == 486) {
+    } else if (Version >= 486) {
         FSeek(clipHeader.unicodeNamesOffs + start + nameOffset[0] * 2);
         wstring name;
     } else {
@@ -895,14 +1003,17 @@ typedef struct {
     FSeek(pos);
 } CTRACKS <read=ReadCTRACKS>;
     string ReadCTRACKS (CTRACKS &input) { return input.name; }
-    
+
 
 local int propSize <hidden=true> = 112;
 local int keySize <hidden=true> = 40;
 
 typedef struct {
     local uint start <hidden=true>;
-    if (Version == 486) {
+    if (Version >= 993) {
+        propSize = 56;
+        keySize = 32;
+    } else if (Version == 486) {
         propSize = 72;
         keySize = 32;
     } else if (Version==60) {
@@ -910,35 +1021,48 @@ typedef struct {
     } else if (Version==99) {
         keySize = 32;
     }
-    
+
     struct {
-        struct rGUID Guid;
-        FSkip(8);
+        GuiNodeID id;
+        int32 uknCount;
+        FSkip(4);
         struct StringRead Name(-1, 0, 0, 0, 0);
-        FSkip(8);
+        uint64 nextClipOffset;
         uint32 Magic;
-        uint32 version; 
-        float NumFrames; 
-        uint32 numNodes, numProperties, numKeys;
+        uint32 version;
+        float NumFrames;
+        uint32 numNodes,numProperties;
+        uint32  numKeys;
+        if (version >= 90) {
+            uint32 boolKeyCount;
+            uint32 uknKeyCount;
+            uint32 uknKeyCount2;
+            uint32 uknCount;
+        }
         start = startof(Magic);
-        if (Version != 99 && Version != 486)
-            rGUID Guid;
-        
+        if (Version != 99 && Version < 486)
+            GUID Guid2;
+
         uint64 clipDataOffs, propertiesOffs;
         uint64 keysOffs;
+        if (version >= 90) {
+            uint64 boolKeysOffset;
+            uint64 uknKeysOffset;
+            uint64 uknKeysOffset2;
+        }
         uint64 namesOffs;
-        
+
         if (Version == 85)
             uint64 namesOffs2;
-        
-        if (Version == 60) 
+
+        if (Version == 60)
             uint64 namesOffsExtra[5];
-        else 
+        else
             uint64 namesOffsExtra[4];
-        
+
         uint64 unicodeNamesOffs;
         uint64 endClipStructsOffs;
-        
+
     } clipHeader <name="Header">;
 
     FSeek(clipHeader.clipDataOffs + start);
@@ -954,20 +1078,36 @@ typedef struct {
             struct PROPERTY Property[clipHeader.numProperties] <optimize=false>;
         } Properties;
     }
-    
-    if (Version == 99) 
-        FSeek(clipHeader.keysOffs + start);
-    else 
-        FSeek(clipHeader.keysOffs + start);
-    
+
+    FSeek(clipHeader.keysOffs + start);
+
     if (clipHeader.numKeys > 0)
         struct clipKey Keys[clipHeader.numKeys] <optimize=true>;
+
+    if (exists(clipHeader.uknKeyCount)) {
+        if (clipHeader.boolKeyCount > 0) {
+            FSeek(clipHeader.boolKeysOffset + start);
+            struct OptimizedKey BoolKeys[clipHeader.boolKeyCount];
+        }
+        if (clipHeader.uknKeyCount > 0) {
+            FSeek(clipHeader.uknKeysOffset + start);
+            struct clipKey Keys[clipHeader.uknKeyCount] <optimize=true>;
+        }
+        if (clipHeader.uknKeyCount2 > 0) {
+            FSeek(clipHeader.uknKeysOffset2 + start);
+            struct {
+                float frame;
+                uint typeFlagsUkn;
+                uint64 valueOrOffset;
+            } UknKeys2[clipHeader.uknKeyCount2];
+        }
+    }
 
     if (clipHeader.namesOffsExtra[1] - clipHeader.namesOffs > 0) {
         FSeek(clipHeader.namesOffs+start);
         float Unknown_Floats[(clipHeader.namesOffsExtra[1] - clipHeader.namesOffs) / 4];
     }
-    
+
     if (clipHeader.namesOffsExtra[1] < clipHeader.unicodeNamesOffs) {
         FSeek(clipHeader.namesOffsExtra[1] + start);
         struct {
@@ -976,19 +1116,19 @@ typedef struct {
             }
         } Names;
     }
-    
+
     FSeek(clipHeader.unicodeNamesOffs + start);
     struct {
         for (k = 0; k < clipHeader.numProperties + clipHeader.numNodes; k++) {
             struct StringRead Name(FTell(), 0, 1, 0, 0);
         }
     } NamesUnicode <name="Names (Unicode)">;
-    
-    
+
+
     local uint pos <hidden=true> = FTell();
-    
+
     FSeek(clipHeader.propertiesOffs + start);
-    
+
     if (clipHeader.numNodes && clipHeader.numProperties)
         struct {
             for (k=0; k<clipHeader.numNodes; k++) {
@@ -1004,7 +1144,7 @@ typedef struct {
             }
         } Sorted_Data <name="Sorted Data (Edit Here)">;
     FSeek(pos);
-    
+
 } CLIP_ENTRY <name="Clip Entry", read=ReadCLIP_ENTRY>;
 
     wstring ReadCLIP_ENTRY(CLIP_ENTRY &c) {
@@ -1026,7 +1166,7 @@ typedef struct keys (uint32 keyCount, uint32 flags, uint64 frameDataOffs) {
         case 2:
             ubyte frameIndex[keyCount];
             break;
-        
+
         case 4:
             int16 frameIndex[keyCount];
             break;
@@ -1047,20 +1187,20 @@ typedef struct {
         for (j=0; j<count; j++) {
             if (idx==1)
                 struct hAttribute {
-                    struct StringRead Path(-1, 0, 0, 0, 0); 
+                    struct StringRead Path(-1, 0, 0, 0, 0);
                     struct StringRead Path(-1, 0, 0, 1, 0);
-                    struct ATTRIBUTE Attribute;  
+                    struct ATTRIBUTE Attribute;
                     FSeek(startof(this)+40);
-                } HeaderAttribute <name=NamehAttribute, read=ReadhAttribute>; 
+                } HeaderAttribute <name=NamehAttribute, read=ReadhAttribute>;
             else
-                struct StringRead Path(-1, 0, 0, 0, 0);  
+                struct StringRead Path(-1, 0, 0, 0, 0);
         }
     }
 } gPath <name=ReadgPathName, read=ReadgPath>;
 
-    string ReadhAttribute(hAttribute &input) { return input.Path[0].String; } 
+    string ReadhAttribute(hAttribute &input) { return input.Path[0].String; }
 
-    string NamehAttribute(hAttribute &input) { return input.Path[1].String; } 
+    string NamehAttribute(hAttribute &input) { return input.Path[1].String; }
 
 
 //FILE START
@@ -1073,69 +1213,133 @@ FSkip(-1);
 struct {
     uint guiVersion;
     uint magic;
-    uint64 offsetsStartOffset; 
-    uint64 endOffs[4]; 
-    if (guiVersion > 430000)
-        uint64 ukn;
+    uint64 offsetsStartOffset;
+    if (guiVersion < 620035) uint64 uknOffset;
+    uint64 resourceAttributesOffset;
+    if (guiVersion > 430000 && guiVersion < 890041) uint64 additionalDataOffset;
+    uint64 guiFilesOffset;
+    uint64 resourcePathsOffset;
     FSeek(offsetsStartOffset);
-    uint64 offsetsStart; 
-    uint64 viewOffset; 
+    uint64 offsetsStart;
+    uint64 viewOffset;
     uint64 numOffs;
-    uint64 offset[numOffs];
+    if (guiVersion < 890041) uint64 offset[numOffs];
     version = guiVersion;
 
-    
+
     if (version == 180014) //RE7
         Version = 60;
     else if (version == 340020) //RE3
         Version = 99;
+    else if (version  >= 890041) //pragmata
+        Version = 993;
     else if (version  >= 400022) //RE8 and MHRise
-        Version = 486; 
+        Version = 486;
 } HEADER <name="Header">;
 
-FSeek(HEADER.endOffs[0]);
-if (version < 430000)
-    struct {
-        for (i=0; i<4; i++){
-            FSeek(HEADER.endOffs[i]);
-            if (ReadInt() > 0) {
-                struct gPath HeaderSection <open=true>;
-                if (i==3)
-                    { BLANK blank; FSkip(-1); }
-            } else 
-                struct gPath HeaderSection;
-        }
-    } Paths <name="Paths & Attributes">;
-
-    string ReadgPath(gPath &p) { 
-        if (p.count && exists(p.Path.String))
-            return p.Path.String; 
-        return "";
-    }
-    string ReadgPathName(gPath &p) { 
-        switch (p.idx) {
-            case 0: return "Unknown";
-            case 1: return "Attributes";
-            case 2: return "GUI Files";
-            case 3: return "Resources";
-            default: return "";
-        }
-    }
-    
-FSeek(HEADER.offset[0]);
+FSeek(HEADER.resourceAttributesOffset);
 struct {
+    struct {
+        uint64 count;
+        struct {
+            if (HEADER.guiVersion < 890041) {
+                struct StringRead Path(-1, 0, 0, 0, 0);
+            } else {
+                uint64 pathHashesOffset;
+                local uint64 p = FTell();
+                FSeek(pathHashesOffset);
+                uint64 pathCount;
+                uint64 PathHashes[pathCount];
+                FSeek(p);
+            }
+            struct StringRead Field(-1, 0, 0, 1, 0);
+            ATTRIBUTE attrib;
+        } ResourceAttribute[count] <optimize=false, read=(exists(Path) ? ReadStringRead(Path) : ReadStringRead(Field))>;
+    } ResourceAttributes;
+
+    if (exists(HEADER.additionalDataOffset)) {
+        uint64 dataOffset1;
+        uint64 dataOffset2;
+        uint64 dataOffset3;
+        FSeek(dataOffset1);
+        struct {
+            uint64 count;
+            struct {
+                GUID guid;
+                struct StringRead Path(-1, 0, 0, 0, 0);
+                struct StringRead Classname(-1, 0, 0, 1, 0);
+                struct StringRead TargetType(-1, 0, 0, 0, 0);
+                uint8 valueType;
+                uint8 uknByte;
+                FSkip(6);
+                uint64 valueOffset;
+            } Item[count] <optimize=false, read=ReadStringRead(Path)>;
+        } Data1;
+        FSeek(dataOffset2);
+        struct {
+            uint64 count;
+            struct {
+                GUID guid;
+                struct StringRead Path(-1, 0, 0, 0, 0);
+                uint type;
+                uint uknInt;
+                struct StringRead Name(-1, 0, 0, 1, 0);
+                struct StringRead Field(-1, 0, 0, 1, 0);
+            } Item[count] <optimize=false, read=ReadStringRead(Path)>;
+        } Data2;
+        FSeek(dataOffset3);
+        struct {
+            uint64 count;
+            struct {
+                GUID guid;
+                struct StringRead Path(-1, 0, 0, 0, 0);
+                uint8 valueType;
+                uint8 uknByte;
+                FSkip(6);
+                struct StringRead TargetType(-1, 0, 0, 0, 0);
+                uint64 valueOffset;
+            } Item[count] <optimize=false, read=ReadStringRead(Path)>;
+        } Data3;
+    }
+
+    FSeek(HEADER.guiFilesOffset);
+    struct {
+        uint64 count;
+        struct {
+            struct StringRead Path(-1, 0, 0, 0, 0);
+        } Paths[count] <optimize=false, read=ReadStringRead(Path)>;
+    } GuiFiles;
+
+    FSeek(HEADER.resourcePathsOffset);
+    struct {
+        uint64 count;
+        struct {
+            struct StringRead Path(-1, 0, 0, 0, 0);
+        } Paths[count] <optimize=false, read=ReadStringRead(Path)>;
+    } Resources;
+} Paths;
+
+if (HEADER.guiVersion < 890041) {
+    FSeek(HEADER.offset[0]);
+    struct {
+        for (i=0; i<HEADER.numOffs; i++){
+            FSeek(HEADER.offset[i]);
+            ELEMENT Element;
+        }
+    } Elements <name="Containers">;
+} else {
+    FSeek(HEADER.offsetsStart);
     for (i=0; i<HEADER.numOffs; i++){
-        FSeek(HEADER.offset[i]);
         ELEMENT Element;
     }
-} Elements <name="Elements">;
+}
 
 string BlankElem(ELEMENT &e) { return " "; }
 
 string ReadELEMENTName(ELEMENT &e) { return e.ElementInfo.className; }
 
 FSeek(HEADER.viewOffset);
-struct SUBELEMENT View <name="SubElement View">;
+struct SUBELEMENT View <name="Root Element">;
 
 void displayElement(uint idx) {
     FSeek(startof(Elements.Element[idx]));

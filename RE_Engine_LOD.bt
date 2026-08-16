@@ -2,25 +2,47 @@
 //--- 010 Editor v9.0.2 Binary Template
 //
 //      File: RE_Engine_lod.bt
-//   Authors: alphaZomega
+//   Authors: alphaZomega, shadowcookie
 //   Version: 1.0
-//   Purpose: Parse lod.3 files
+//   Purpose: Parse lod.* files
 //  Category: RE Engine
-// File Mask: *.lod.3
-//  ID Bytes: 
+// File Mask: *.lod.*
+//  ID Bytes:
 //   History: Dec 2, 2022
 //------------------------------------------------
 
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
 struct {
     uint magic;
-    uint ukn0;
-    uint numLODSettings;
+    uint type;
+    if (version >= 3) {
+        uint groupCount;
+    }
 } header;
 
-struct {
-    uint ukn0;
-    uint ukn1;
-    uint hash;
-    float setting[29];
-} LODSettingsGroup[header.numLODSettings+1];
+typedef struct {
+    uint lodBits;
+    uint lodGroups;
+    if (version >= 3) {
+        uint hash;
+    }
+    if (version == 2) {
+        float values[29 + 13];
+        return;
+    }
+    if (lodBits == 127 && lodGroups == 7) {
+        float values[29];
+    } else if (lodBits == 4 && lodGroups == 1) {
+        float values[3];
+    } else if (lodBits == 7 && lodGroups == 3) {
+        float values[7];
+    } else {
+        float values[1];
+    }
+} LODSettingsGroup <optimize=false>;
 
+LODSettingsGroup DefaultLod;
+if (version >= 3) {
+    LODSettingsGroup Settings[header.groupCount];
+}

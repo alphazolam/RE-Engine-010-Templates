@@ -5,14 +5,14 @@
 //   Authors:   Che, Darkness, alphaZomega
 //   Version:   May 31, 2024
 //   Purpose:   Editing of RE Engine MDF material files
-//   Category:  
+//   Category:
 //   File Mask: *
-//   ID Bytes:  4D 44 46 00 // MDF 
-//   History:   
+//   ID Bytes:  4D 44 46 00 // MDF
+//   History:
 //------------------------------------------------
 SetForeColor(cGreen);
 LittleEndian();
-local uint64 i <hidden=true>, j <hidden=true>,\ 
+local uint64 i <hidden=true>, j <hidden=true>,\
              k <hidden=true>, pos <hidden=true>;
 local int matchSize <hidden=true>, Version <hidden=true> = 10;
 local string fName <hidden=true> = GetFileName();
@@ -90,19 +90,19 @@ typedef struct {
         return h;
     }
 
-    int find(wstring str, wstring term) { 
-        return (RegExSearch(str, term, matchSize, 0)); 
+    int find(wstring str, wstring term) {
+        return (RegExSearch(str, term, matchSize, 0));
     }
 
-    int findS(string str, string term) { 
-        return (RegExSearch(str, term, matchSize, 0)); 
+    int findS(string str, string term) {
+        return (RegExSearch(str, term, matchSize, 0));
     }
 
     uint32 mmh3 (byte key[], uint32 length , uint32 seed){
         local uint64 block_start<hidden=true>;
         local const uint nBlocks = length / 4;
         local uint32 h1 = seed;
-        
+
         local const uint32 c1 = 0xcc9e2d51;
         local const uint32 c2 = 0x1b873593;
 
@@ -197,7 +197,7 @@ typedef struct {
             if (exists(TexIDs)) {
                 if(Header.mtrls.mtrl[i].uknStructsOffs > off)     Header.mtrls.mtrl[i].uknStructsOffs     += sz;
                 for (j = 0; j < 4; j++)
-                    if(exists(TexIDs.MatTexIDs[i].offsets) && TexIDs.MatTexIDs[i].offsets[j] > off)  
+                    if(exists(TexIDs.MatTexIDs[i].offsets) && TexIDs.MatTexIDs[i].offsets[j] > off)
                         TexIDs.MatTexIDs[i].offsets[j] += sz;
             }
         }
@@ -257,7 +257,7 @@ typedef struct {
         uint64 nameOffs<format=hex, name="Gpbf Name Offset">; pos = FTell();
         FSeek(nameOffs);
         mdf_str_t name<name="Gpbf Name">;
-        
+
         FSeek(pos);
         offs32_t nameUIF16Hash <name="Name UTF-16 Hash">;
         offs32_t nameASCIIHash <name="Name ASCII Hash">;
@@ -290,12 +290,12 @@ typedef struct {
         FSeek(Header.mtrls.mtrl[i].propsOffs+propHdrs.mtrl[i].prop[j].propOffs);
 
         local uint64 typeHash <hidden=true> = propHdrs.mtrl[i].prop[j].nameUIF16Hash;
-        if (propHdrs.mtrl[i].prop[j].numParams == 4 && (doesExist(Lower((string)type), "color") && !doesExist(Lower((string)type), "rate")) || 
+        if (propHdrs.mtrl[i].prop[j].numParams == 4 && (doesExist(Lower((string)type), "color") && !doesExist(Lower((string)type), "rate")) ||
             typeHash == 0x3A130D0A || typeHash == 0x2FD71A4B ||
             typeHash == 0x114B33F4 || typeHash == 0xF1BACDAF ||
             typeHash == 0x033CB166 || typeHash == 0x7D0FA086 ||
             typeHash == 0x83EBFAB5 || typeHash == 0x77181233)
-        {   
+        {
             local uint64 R <hidden=true> = ReadFloat(FTell()) * 255.0f + 0.5;
             local uint64 G <hidden=true> = ReadFloat(FTell()+4) * 255.0f + 0.5;
             local uint64 B <hidden=true> = ReadFloat(FTell()+8) * 255.0f + 0.5;
@@ -338,7 +338,7 @@ typedef struct {
             } else
                 ref.Value = Atof(s);
         }
-    }    
+    }
 
     string ReadPropName( mtrlProp& ref ) {
         if( exists(ref.type) )
@@ -350,11 +350,11 @@ typedef struct {
     //Material container
     typedef struct {
         local wstring mtrlName <hidden=true> = Header.mtrls.mtrl[i].mtrlName.st;
-    
+
         for (j = 0; j < Header.mtrls.mtrl[i].propCount; j++)
             mtrlProp Components <open=false>;
     } props <name=ReadMtrlNameProps>;
-    
+
     string ReadMtrlNameProps( props& ref ) {
         if( exists(ref.mtrlName) )
             return ref.mtrlName;
@@ -367,7 +367,7 @@ typedef struct {
         uint64 propNameOffs <format=hex, name="Property Name Offset">; pos = FTell();
         FSeek(propNameOffs);
         mdf_str_t propName <name="Property Name">;
-        
+
         FSeek(pos);
         offs32_t nameUIF16Hash <name="Name UTF-16 Hash">;
         offs32_t nameASCIIHash <name="Name ASCII Hash">;
@@ -375,9 +375,10 @@ typedef struct {
         if (numVersion >= 13)
         {
             uint32 propOffs <name="Property Data Offset">;
-            uint32 numParams <name="Parameter Count">;
+            uint16 numParams <name="Parameter Count">;
+            uint16 ukn <name="Something?">;
         }
-        else 
+        else
         {
             uint32 numParams <name="Parameter Count">;
             uint32 propOffs <name="Property Data Offset">;
@@ -412,15 +413,15 @@ typedef struct {
         offs32_t texUTF16Hash <name="UTF-16 Texture Type Hash", open=suppress>;
         offs32_t texASCIIHash <name="ASCII Texture Type Hash", open=suppress>;
         uint64 pathOffs <format=hex, name="Texture File Path Offset">;
-        if (numVersion >= 13) 
+        if (numVersion >= 13)
             uint64 ukn <hidden=0>;
-        pos = FTell(); 
-        
+        pos = FTell();
+
         FSeek( typeOffs );
         mdf_str_t Type <name="Texture Type", open=suppress>; FSeek( pathOffs );
         mdf_str_t Path <name="Texture File Path", open=suppress>;
         FSeek( pos ); FSkip(-1);
-        byte blank <name=readblank,read=readblank>; 
+        byte blank <name=readblank,read=readblank>;
     } texHdr <name=ReadTexType,read=readTexPath, write=writeTexPath>;
 
     string ReadTexType( texHdr& ref ) {
@@ -442,7 +443,7 @@ typedef struct {
 		else
 			ref.Path.st = s;
     }
-    
+
 //Material container
     typedef struct {
         local wstring mtrlName <hidden=true> = Header.mtrls.mtrl[i].mtrlName.st;
@@ -464,22 +465,22 @@ typedef struct {
     typedef struct {
         uint64 mtrlNameOffs <format=hex, name="Material Name Offset">;
         uint32 hash <name="Material Name Hash", format=hex>;
-        
+
         if (numVersion == 6) //ReadUInt64(48) > FileSize() ||
             uint uknRE7, uknRE7;
-        
+
         uint32 sizeOfFloatStr <name="Properties Data Block Size">;
         uint32 propCount <name="Property Count">;
-        uint32 texCount <name="Texture Count">; 
-        
+        uint32 texCount <name="Texture Count">;
+
 		if (numVersion >= 19 && numVersion < 100000)
         {
             int32 gpbf;
             int32 gpbf;
         }
-			
+
         MaterialShadingType materialShadingType <name="Shader Type">;
-        
+
         if (isV2)
             uint unkInt_0x24;
 
@@ -493,29 +494,32 @@ typedef struct {
 
 		FSeek(startof(Alpha_Flag_Preset));
         ALPHAFLAG Flags <format=binary, name="Flags">;
-        
-        if (isV2) 
+
+        if (isV2)
         {
             int32 unkInt_0x2C;
             int32 unkInt_0x30;
         }
+        if (numVersion >= 51) {
+            uint64 pragmataUkn;
+        }
 
-        uint64 propHdrsOffs <format=hex, name="Property Headers Offset">;             
+        uint64 propHdrsOffs <format=hex, name="Property Headers Offset">;
         uint64 texHdrOffs <format=hex, name="Tex Headers Offset">;
 		if (numVersion >= 19 && numVersion < 100000)
 			uint64 gpbfOffs <format=hex, name="Gpbf Offset">;
 
         uint64 propsOffs <format=hex, name="Properties Data Block Offset">;
-        uint64 mmtrPath_Offs <format=hex, name="MasterMaterial File Path Offset">; 
-        
+        uint64 mmtrPath_Offs <format=hex, name="MasterMaterial File Path Offset">;
+
         if (isV2) {
             offs64_t uknStructsOffs;
-            
+
             if (!hasUknStructs && uknStructsOffs)
                 hasUknStructs = uknStructsOffs;
         }
-        
-        pos = FTell(); 
+
+        pos = FTell();
         FSeek( mtrlNameOffs[0] );
         mdf_str_t mtrlName <write=WriteValueMtrlNameHash, open=suppress, name="Material Name">; FSeek(mmtrPath_Offs);
         local uint64 Hash_From_Name <name="ASCII Hash (Generated):"> = hashWs(mtrlName.st);
@@ -538,7 +542,7 @@ typedef struct {
             return "";
     }
 	void WriteMtrlHdr( mtrlHdr& ref, wstring s) {
-		mdf_st_write(ref.mmtrPath, s); 
+		mdf_st_write(ref.mmtrPath, s);
 	}
 
     string ReadValueMtrlNameHash( mdf_str_t& ref ) {
@@ -558,9 +562,9 @@ ubyte UniquePathWriter <name="Make Unique", read=ReadUniqueWriter, write=WriteUn
     string ReadUniqueWriter(ubyte &f) { return "      [Input here to make all tex paths unique]"; }
 
     local uint counter <hidden=1>;
-    
+
     local uint rOffsArr[1000] <hidden=1>;
-    
+
     int findInArray(uint offs) {
         local int lastFoundIdx = -1, kk;
         for (kk = 0; kk < 1000; kk++){
@@ -575,8 +579,8 @@ ubyte UniquePathWriter <name="Make Unique", read=ReadUniqueWriter, write=WriteUn
                 lastFoundIdx = kk;
         }
     }
-    
-    void WriteUniqueWriter(ubyte &f, string s) { 
+
+    void WriteUniqueWriter(ubyte &f, string s) {
         local uint ii, jj, current, newOffs;
         for(ii = 0; ii < Header.mtrlCount; ii++){
             for (jj = 0; jj < Header.mtrls.mtrl[ii].texCount; jj++){
@@ -663,29 +667,29 @@ struct {
 } mtrlProps <name="Material Properties (edit here)">;
 
 
-if (hasUknStructs) 
+if (hasUknStructs)
 {
     FSeek(0);
     struct {
         FSeek(hasUknStructs);
 
-        for (i = 0; i < Header.mtrlCount; i++) 
+        for (i = 0; i < Header.mtrlCount; i++)
         {
             FSeek(Header.mtrls.mtrl[i].uknStructsOffs);
             struct unknownStruct {
                 local ushort idx <hidden=true> = i;
 
-                if (Header.mtrls.mtrl[i].uknStructsOffs) 
+                if (Header.mtrls.mtrl[i].uknStructsOffs)
                 {
                     local uint furthestAddress <hidden=true> = FTell();
-                    uint64 offsets[4];
+                    uint64 offsets[8];
 
-                    for (j = 0; j < 4; j++) 
+                    for (j = 0; j < 8; j++)
                     {
                         FSeek(offsets[j]);
                         struct {
                             uint count;
-                            
+
                             for (k=0; k<count; k++)
                                 struct texID {
                                     uint id;
@@ -709,6 +713,6 @@ if (hasUknStructs)
 
     string ReadUnknownStruct(unknownStruct &u) { return Header.mtrls.mtrl[u.idx].mtrlName.st; }
 
-    string ReadTexID(texID &t) { 
+    string ReadTexID(texID &t) {
         return (string)texHdrs.mtrl[t.matIdx].TEX[t.id].Path.st;
     }

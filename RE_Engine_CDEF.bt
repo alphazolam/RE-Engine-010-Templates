@@ -1,0 +1,136 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: CDEF.bt
+//   Authors: shadowcookie
+//   Version: 1.0
+//   Purpose:
+//  Category: RE Engine
+// File Mask: *.cdef.*
+//  ID Bytes: 43 44 45 46
+//   History:
+//------------------------------------------------
+
+local int version = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
+
+struct {
+	uint32 magic <format=hex>;
+	uint32 layerCount;
+    if (version >= 3) {
+	    uint32 maskCount;
+	    uint32 attributeCount;
+	    uint32 materialCount;
+	    uint32 presetCount;
+	    uint64 padding;
+    } else {
+        uint16 maskCount;
+	    uint16 attributeCount;
+	    uint16 materialCount;
+	    uint16 presetCount;
+    }
+
+} Header;
+
+typedef struct OffsetWString {
+	uint64 offset;
+	local int pos = FTell();
+	FSeek(offset);
+	wstring str;
+	FSeek(pos);
+};
+
+typedef struct {
+    SetBackColor(ReadUInt(FTell()));
+    uint8 r, g, b, a;
+} ColorRGBA<read=Str("R: %d G: %d G: %d A: %d", r, g, b, a)>;
+
+typedef struct Definition {
+	GUID guid;
+	OffsetWString name <read=str>;
+	uint32 nameHash;
+	uint32 id;
+	uint32 ukn;
+    ColorRGBA col;
+	uint32 maskIdStart;
+	uint32 maskIdEnd;
+};
+
+Definition Layers[Header.layerCount] <optimize=false, read=name.str>;
+
+local int maxLayers = version >= 3 ? 64 : 32;
+
+if (Header.layerCount < maxLayers) {
+	Definition unusedLayers[maxLayers - Header.layerCount] <optimize=false>;
+}
+
+if (version >= 3) {
+    struct {
+	    uint32 a <format=binary>, b <format=binary>;
+    } LayerBits[maxLayers] <read=Str("%d %d", a, b)>;
+} else {
+    uint32 LayerBits[maxLayers] <format=binary>;
+}
+
+uint64 masksOffset;
+uint64 physicsMaterialsOffset, attributesOffset;
+
+if (version >= 3) {
+    uint64 presetOffset;
+}
+
+if (Header.maskCount > 0) {
+    FSeek(masksOffset);
+    struct {
+	    GUID guid;
+	    OffsetWString name <read=str>;
+	    uint32 nameHash;
+	    uint32 ukn2;
+	    uint32 layerId;
+	    uint32 maskId;
+	    uint32 padding1;
+	    uint32 padding2;
+    } Masks[Header.maskCount] <optimize=false, read=name.str>;
+}
+
+if (physicsMaterialsOffset > 0 && Header.materialCount > 0) {
+	FSeek(physicsMaterialsOffset);
+	struct {
+		GUID guid;
+		OffsetWString name <read=str>;
+		uint32 nameHash;
+        uint32 padding;
+        if (version >= 7) {
+            ColorRGBA color;
+		    uint32 padding;
+        }
+	} PhysicsMaterials[Header.materialCount] <read=name.str, optimize=false>;
+}
+
+if (attributesOffset > 0 && Header.attributeCount > 0) {
+	FSeek(attributesOffset);
+	struct {
+		GUID guid;
+		OffsetWString name <read=str, optimize=false>;
+		uint32 nameHash;
+        uint32 ukn;
+	} Attributes[Header.attributeCount] <read=name.str, optimize=false>;
+}
+
+if (exists(presetOffset) && presetOffset > 0 && Header.presetCount > 0) {
+	FSeek(presetOffset);
+	struct {
+		GUID guid;
+		OffsetWString name <read=str, optimize=false>;
+        if (version >= 5) {
+		    OffsetWString description <read=str, optimize=false>;
+        }
+        uint32 nameHash;
+		uint32 maskBits <format=binary>;
+        ColorRGBA color;
+        uint32 ukn1;
+        uint32 ukn2, ukn3 <format=binary>;
+		if (version >= 4) {
+			uint32 likelyPadding1, likelyPadding2;
+		}
+	} Presets[Header.presetCount] <read=name.str, optimize=false>;
+}
