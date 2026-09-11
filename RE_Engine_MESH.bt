@@ -784,6 +784,20 @@ struct{
 
 } VertBuffHdr;
 
+typedef struct  {
+    ushort materialID;
+    ushort bufferIndex;
+    if (version >= 9) int ukn2;
+    fc_t numMFaces;
+    fc_t fcsBefore;
+    uint32 vrtBefore;
+    if (version >= 3) {
+        int streamingOffset;
+        int streamingOffset2;
+    }
+    if (version >= 8) int ukn3;
+} SubmeshHeader <optimize=true>;
+
 for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliable)
     if (Header.LODOffs[z] > 0) {
         FSeek(Header.LODOffs[z]);
@@ -849,43 +863,18 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
                             fc_t numFaces;
 
                             posBack = FTell();
-                            for (k = 0; k < numMsh; k++){
-                                struct {
-                                    ushort matID;
-                                    FSkip(2);
-                                    if (version >= 9) FSkip(4);
-                                    fc_t numMFaces;
-                                    fc_t fcsBefore;
-                                    uint32 vrtBefore;
-                                    if (version >= 3) FSkip(8);
-                                    if (version >= 8) FSkip(8);
-                                } foreseenSubMsh<hidden=true>;
-                            }
+                            SubmeshHeader foreseenSubMsh[numMsh]<hidden=true>;
                             FSeek(posBack);
 
                             for (k = 0; k < numMsh; k++){
                                 struct SUBMESH {
-
-                                    ushort Material_ID;
-                                    ushort bufferIndex;
-                                    if (version >= 9) int ukn2;
-                                    local string Material_Name <hidden=true> = exists(Bones.Material_Indices.Material_Indices) ? Bones.Material_Indices.Material_Indices[Material_ID].name : "__occ";
-						            fc_t numMFaces;
-                                    local uint numIndices = numMFaces;
-                                    fc_t fcsBefore;
-                                    uint32 vrtBefore;
-                                    local int numVerts <hidden=false>;
-									if (version >= 3) {
-										int streamingOffset;
-                                        int streamingOffset2;
-                                    }
-                                    if (version >= 8) // initial dd2
-                                    {
-                                        int ukn3;
-                                    }
-                                    if (bufferIndex > 0) {
+                                    SubmeshHeader hdr <name="Submesh Header">;
+                                    local string Material_Name <hidden=true> = exists(Bones.Material_Indices.Material_Indices) ? Bones.Material_Indices.Material_Indices[hdr.materialID].name : "__occ";
+                                    if (hdr.bufferIndex > 0) {
                                         break;
                                     }
+                                    local uint numIndices = hdr.numMFaces;
+                                    local int numVerts <hidden=false>;
                                     if(k + 1 < numMsh){
                                         numVerts = foreseenSubMsh[k+1].vrtBefore - foreseenSubMsh[k].vrtBefore;
                                     } else if (exists(LODGroup)) {
@@ -897,7 +886,7 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
                                     posMsh = FTell();
                                     if (version != 1) {
                                         for (l = 0; l < VertBuffHdr.mainBuffer.elementCount && numVerts > 0; l++) {
-                                            FSeek(VertBuffHdr.mainBuffer.vertBuffOffs+VertBuffHdr.vertElemHeader[l].offs + VertBuffHdr.vertElemHeader[l].size*vrtBefore);
+                                            FSeek(VertBuffHdr.mainBuffer.vertBuffOffs+VertBuffHdr.vertElemHeader[l].offs + VertBuffHdr.vertElemHeader[l].size*hdr.vrtBefore);
 
                                             if (vertStart==0) vertStart = FTell();
 
@@ -1018,7 +1007,7 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
                                         ushort Index, Index, Index;
                                     } Faces[this.numIndices/3] <open=suppress, fgcolor=cLtGreen>;
 
-                                    if (version != 1 && numMFaces % 2 != 0) //faces padding
+                                    if (version != 1 && hdr.numMFaces % 2 != 0) //faces padding
                                         FSkip(2);
 
                                     posF = FTell();
@@ -1146,8 +1135,13 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
 				FSeek(posBack);
 			}
 
+            if (exists(VertBuffHdr.mainBuffer.blendshapesOffset) && VertBuffHdr.mainBuffer.blendshapesOffset > 0) {
+                FSeek(VertBuffHdr.mainBuffer.vertBuffOffs + VertBuffHdr.mainBuffer.blendshapesOffset);
+                uint blendShapeData1;
+            }
+
             if (exists(VertBuffHdr.mainBuffer.blendShapeDataOffset2) && VertBuffHdr.mainBuffer.blendShapeDataOffset2 > 0) {
-                FSeek(VertBuffHdr.mainBuffer.vertBuffOffs + VertBuffHdr.mainBuffer.blendshapesOffset2);
+                FSeek(VertBuffHdr.mainBuffer.vertBuffOffs + VertBuffHdr.mainBuffer.blendShapeDataOffset2);
                 uint blendShapeData2;
             }
 
@@ -1203,43 +1197,18 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
                             fc_t numFaces;
 
                             posBack = FTell();
-                            for (k = 0; k < numMsh; k++){
-                                struct {
-                                    ushort matID;
-                                    FSkip(2);
-                                    if (version >= 9) FSkip(4);
-                                    fc_t numMFaces;
-                                    fc_t fcsBefore;
-                                    uint32 vrtBefore;
-                                    if (version >= 3) FSkip(8);
-                                    if (version >= 8) FSkip(8);
-                                } foreseenSubMsh;
-                            }
+                            SubmeshHeader foreseenSubMsh[numMsh]<hidden=true,optimize=true>;
                             FSeek(posBack);
 
                             for (k = 0; k < numMsh; k++){
                                 struct SHADOW_SUBMESH {
-
-                                    ushort Material_ID;
-                                    ushort bufferIndex;
-                                    if (version >= 9) int ukn2;
-                                    local string Material_Name <hidden=true> = Bones.Material_Indices.Material_Indices[Material_ID].name;
-                                    fc_t numMFaces;
-                                    local uint numIndices = numMFaces;
-                                    fc_t fcsBefore;
-                                    uint32 vrtBefore;
-                                    local int numVerts <hidden=false>;
-                                    if (version >= 3) {
-                                        int streamingOffset;
-                                        int streamingOffset2;
-                                    }
-                                    if (version >= 8) // dd2
-                                    {
-                                        int ukn2;
-                                    }
-                                    if (bufferIndex > 0) {
+                                    SubmeshHeader hdr;
+                                    local string Material_Name <hidden=true> = Bones.Material_Indices.Material_Indices[hdr.materialID].name;
+                                    if (hdr.bufferIndex > 0) {
                                         break;
                                     }
+                                    local uint numIndices = numMFaces;
+                                    local int numVerts <hidden=false>;
                                     if(k + 1 < numMsh){
                                         numVerts = foreseenSubMsh[k+1].vrtBefore - foreseenSubMsh[k].vrtBefore;
                                     } else {
@@ -1251,7 +1220,7 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
                                     posMsh = FTell();
                                     if (version != 1) {
                                         for (l = 0; l < VertBuffHdr.mainBuffer.elementCount && numVerts > 0; l++) {
-                                            FSeek(VertBuffHdr.mainBuffer.vertBuffOffs+VertBuffHdr.vertElemHeader[l].offs + VertBuffHdr.vertElemHeader[l].size*vrtBefore);
+                                            FSeek(VertBuffHdr.mainBuffer.vertBuffOffs+VertBuffHdr.vertElemHeader[l].offs + VertBuffHdr.vertElemHeader[l].size*hdr.vrtBefore);
 
                                             if (vertStart==0) vertStart = FTell();
 
@@ -1350,7 +1319,7 @@ for (z = 0; z < 1; z++) { //set z to 2 to enable parsing of 2nd model (unreliabl
                                         ushort Index, Index, Index;
                                     } Faces[this.numIndices/3] <open=suppress, fgcolor=cLtGreen>;
 
-                                    if (version != 1 && numMFaces % 2 != 0) //faces padding
+                                    if (version != 1 && hdr.numMFaces % 2 != 0) //faces padding
                                         FSkip(2);
 
                                     posF = FTell();
@@ -1430,10 +1399,12 @@ if (version != 1 && Header.normalsRecalcOffs) {
             uint64 count2;
             uint64 ukn2;
         }
-        uint64 offsetsOffset;
-        FSeek(offsetsOffset);
-        uint64 realOffsets[count];
-        if (version < 11) {
+        if (version >= 11) {
+            uint TODO;
+        } else {
+            uint64 offsetsOffset;
+            FSeek(offsetsOffset);
+            uint64 realOffsets[count];
             for(i = 0; i < count; i++) {
                 FSeek(realOffsets[i]);
                 struct {
