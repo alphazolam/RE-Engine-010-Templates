@@ -18,16 +18,18 @@ local int i <hidden=true>, j <hidden=true>, k <hidden=true>;
 
 local int fileVersion = Atoi(SubStr(FileNameGetExtension(GetFileName()), 1));
 
-local int version_re8      <hidden=true> = 62;
-local int version_rert     <hidden=true> = 65;
-local int version_re4      <hidden=true> = 221108868;
-local int version_dd2      <hidden=true> = 231011972;
-local int version_mhws_min <hidden=true> = 241111744;
-local int version_mhws_max <hidden=true> = 241111760;
-local int version_mhst3    <hidden=true> = 250604242;
-local int version_re9      <hidden=true> = 250925365;
-local int version_pragmata <hidden=true> = 251121978;
-local int version_oniws    <hidden=true> = 251215760;
+local int version_re8        <hidden=true> = 62; // 3E
+local int version_rert       <hidden=true> = 65; // 41
+local int version_re4        <hidden=true> = 221108868; // 0D 2D DA 84
+local int version_dd2        <hidden=true> = 231011972; // 0D C4 F6 84
+local int version_mhws_min   <hidden=true> = 241111744; // 0E 5F 12 C0
+local int version_mhws_max   <hidden=true> = 241111760; // 0E 5F 12 D0
+local int version_mhst3      <hidden=true> = 250604242; // 0E EF EA D2
+local int version_re9        <hidden=true> = 250925365; // 0E F4 D1 35
+local int version_pragmata   <hidden=true> = 251121978; // 0E F7 D1 3A
+local int version_oniws_demo <hidden=true> = 251215760; // 0E F9 3F 90
+local int version_oniws      <hidden=true> = 260209505; // 0F 82 7B 61
+local int version_dd2_v2     <hidden=true> = 260421224; // 0F 85 B6 68
 
 typedef ushort NormalizedShort <read=ReadNormalizedShort>;
 
@@ -52,10 +54,10 @@ enum ClothCalculateMode {
 
 struct {
 	uint signature;
-	if (fileVersion >= version_oniws) {
+	if (fileVersion == version_oniws_demo) { // only in oni:wots, not in dd2_v2 anymore
 		uint meshResourcePathHash;
 		uint cpuMemorySize;
-	} else if (fileVersion >= version_re9) { // re9
+	} else if (fileVersion >= version_re9) { // re9, dd2_v2
 		uint cpuMemorySize;
 		uint hash1;
 		uint hash2;
@@ -92,7 +94,7 @@ struct {
 		uint numWeightedContactDescs1;
 		uint numWeightedContactDescs2;
 		int lodCount;
-		if (fileVersion <= version_mhst3 || fileVersion >= version_oniws) {
+		if (fileVersion <= version_mhst3 || fileVersion == version_oniws_demo) {
 			uint numDeformBones;
 			uint null;
 		} else {
@@ -166,7 +168,7 @@ struct {
 			uint numVertexDeformInfos;
 		}
 	} else {
-		if (fileVersion >= version_oniws) {
+		if (fileVersion >= version_oniws_demo) {
 			uint64 pointTriangleContactDescTbl;
 			uint64 edgeEdgeContactDescTbl;
 			uint64 weightedContactDescsTbl1;
@@ -179,7 +181,7 @@ struct {
 			uint64 pointTriangleContactDescTbl;
 			uint64 edgeEdgeContactDescTbl;
 		}
-		if (fileVersion == version_re9 || fileVersion == version_pragmata || fileVersion >= version_mhws_min && fileVersion <= version_mhws_max) {
+		if (fileVersion >= version_mhws_min && fileVersion != version_mhst3 && fileVersion != version_oniws_demo && fileVersion != version_oniws) {
 			uint64 offsUnused3; // TODO verify
 		}
 
