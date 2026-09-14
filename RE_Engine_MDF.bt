@@ -471,6 +471,10 @@ typedef struct {
 
         uint32 sizeOfFloatStr <name="Properties Data Block Size">;
         uint32 propCount <name="Property Count">;
+        local int isOnimushaVariant = numVersion == 51 && ReadUInt(FTell() + 36) > 1;
+        if (numVersion >= 51 && isOnimushaVariant) {
+            uint pragmataUkn;
+        }
         uint32 texCount <name="Texture Count">;
 
 		if (numVersion >= 19 && numVersion < 100000)
@@ -500,7 +504,7 @@ typedef struct {
             int32 unkInt_0x2C;
             int32 unkInt_0x30;
         }
-        if (numVersion >= 51) {
+        if (numVersion >= 51 && !isOnimushaVariant) {
             uint64 pragmataUkn;
         }
 
